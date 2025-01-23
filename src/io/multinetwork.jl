@@ -21,8 +21,8 @@ function make_multinetwork(
     sn_data::Dict{String,Any},
     time_series::Dict{String,Any};
     global_keys = ["dim","multinetwork","name","per_unit","source_type","source_version"],
-    number_of_nws::Int = length(dim(sn_data)[:li]),
-    nw_id_offset::Int = dim(sn_data)[:offset],
+    number_of_nws::Int = length(_FP.dim(sn_data)[:li]),
+    nw_id_offset::Int = _FP.dim(sn_data)[:offset],
     share_data::Bool = true,
     check_dim::Bool = true
 )
@@ -37,6 +37,7 @@ end
 mn_data = Dict{String,Any}("nw"=>Dict{String,Any}())
 _add_mn_global_values!(mn_data, sn_data, global_keys)
 _add_time_series!(mn_data, sn_data, global_keys, time_series, number_of_nws, nw_id_offset; share_data)
+add_hour_scenario(mn_data)
 
 return mn_data
 end
@@ -69,6 +70,7 @@ function make_multinetwork(
     _add_mn_global_values!(mn_data, sn_data, global_keys)
     template_nw = _make_template_nw(sn_data, global_keys)
     mn_data["nw"]["1"] = copy(template_nw)
+    add_hour_scenario(mn_data)
 
     return mn_data
 end
@@ -96,4 +98,46 @@ function _add_mn_global_values!(mn_data, sn_data, global_keys)
     # Special cases are handled below
     mn_data["multinetwork"] = true
     get!(mn_data, "name", "multinetwork")
+end
+
+function _make_template_nw(sn_data, global_keys)
+    template_nw = copy(sn_data)
+    for k in global_keys
+        delete!(template_nw, k)
+    end
+    return template_nw
+end
+
+# Build the nw by copying the template and substituting data from time_series.
+function _build_nw(template_nw, time_series, idx; share_data)
+    copy_function = share_data ? copy : deepcopy
+    nw = copy_function(template_nw)
+    for (key, element) in time_series
+        if haskey(nw, key)
+            nw[key] = copy_function(template_nw[key])
+            for (l, element) in time_series[key]
+                if haskey(nw[key], l)
+                    nw[key][l] = copy_function(template_nw[key][l])
+                    for (m, property) in time_series[key][l]
+                        nw[key][l][m] = property[idx]
+                    end
+                else
+                    Memento.warn(_LOGGER, "Key $l not found, will be ignored.")
+                end
+            end
+        else
+            Memento.warn(_LOGGER, "Key $key not found, will be ignored.")
+        end
+    end
+    return nw
+end
+
+function add_hour_scenario(data)
+    for i in eachindex(data["dim"][:li])
+        index = CartesianIndices(data["dim"][:li])[i]
+        row, col = Tuple(index)
+        data["nw"]["$i"]["hour"] = row
+        data["nw"]["$i"]["scenario"] = col
+        data["nw"]["$i"]["hour_scenario_index"] = Tuple(index)
+    end
 end

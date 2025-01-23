@@ -21,8 +21,10 @@ const _LOGGER = Memento.getlogger(@__MODULE__)
 __init__() = Memento.register(_LOGGER)
 
 include("prob/acdcsw_AC.jl")
+include("prob/acdc_stochastic_opf.jl")
 include("core/objective.jl")
 include("io/auxiliary_functions.jl")
+include("io/multinetwork.jl")
 include("core/constraint.jl")
 include("core/constraint_template.jl")
 
