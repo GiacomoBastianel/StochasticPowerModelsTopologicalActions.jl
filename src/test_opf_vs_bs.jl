@@ -17,9 +17,9 @@ _FP._initialize_dim()
 
 #loads = Dict(1 => Dict{String,Any}("load"=>1.0))
 n_hours = 1
-n_scenarios = 1
-#scenarios = Dict(1 => Dict{String,Any}("probability"=>0.3,"value"=>1.0),2 => Dict{String,Any}("probability"=>0.2,"value"=>1.0),3 => Dict{String,Any}("probability"=>0.2,"value"=>1.0),4 => Dict{String,Any}("probability"=>0.3,"value"=>1.0))
-scenarios = Dict(1 => Dict{String,Any}("probability"=>1.0,"value"=>1.0))
+n_scenarios = 4
+scenarios = Dict(1 => Dict{String,Any}("probability"=>0.3,"value"=>1.0),2 => Dict{String,Any}("probability"=>0.2,"value"=>1.0),3 => Dict{String,Any}("probability"=>0.2,"value"=>1.0),4 => Dict{String,Any}("probability"=>0.3,"value"=>1.0))
+#scenarios = Dict(1 => Dict{String,Any}("probability"=>1.0,"value"=>1.0))
 
 _FP.add_dimension!(data_5_acdc, :hour, n_hours)
 _FP.add_dimension!(data_5_acdc, :scenario, scenarios)
@@ -34,6 +34,10 @@ data_busbars_ac_split_5_acdc,  switches_couples_ac_5,  extremes_ZILs_5_ac  = _PM
 data_busbars_ac_split_5_acdc, loadprofile, genprofile = _SPMTA.create_stochastic_profile_data!(data_busbars_ac_split_5_acdc)
 
 loadprofile = ones(length(data_busbars_ac_split_5_acdc["load"]),n_hours*n_scenarios)
+loadprofile[1,1] = 0.5
+loadprofile[2,2] = 0.5
+loadprofile[3,3] = 0.5
+loadprofile[4,4] = 0.5
 
 # These need to be modified
 time_series = _SPMTA.create_profile_data(n_hours*n_scenarios, data_busbars_ac_split_5_acdc, loadprofile, genprofile) # Your time series should have the same format as this `time_series` dict

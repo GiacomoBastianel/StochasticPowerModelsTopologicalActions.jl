@@ -62,3 +62,5 @@ function build_stochastic_acdc_opf(pm::_PM.AbstractPowerModel)
     objective_stochastic_opf(pm)
 
 end
+
+### Functions calling all the scenarios within one hour STILL TO BE IMPLENTED
