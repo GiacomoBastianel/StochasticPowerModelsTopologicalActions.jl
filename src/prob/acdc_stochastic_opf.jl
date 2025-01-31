@@ -47,7 +47,7 @@ function build_stochastic_acdc_opf(pm::_PM.AbstractPowerModel)
             _PMACDC.constraint_ohms_dc_branch(pm, i; nw = n)
         end
         for i in _PM.ids(pm, n, :convdc)
-            _PMACDC.constraint_converter_losses(pm, i; nw = n)
+            _PMTP.constraint_converter_losses(pm, i; nw = n)
             _PMACDC.constraint_converter_current(pm, i; nw = n)
             _PMACDC.constraint_conv_transformer(pm, i; nw = n)
             _PMACDC.constraint_conv_reactor(pm, i; nw = n)

@@ -53,25 +53,28 @@ Generate a multinetwork data structure - having only one `nw` - from a single ne
   `nw`).
 - `check_dim`: whether to check for `dim` in `sn_data`; default: `true`.
 """
-function make_multinetwork(
-        sn_data::Dict{String,Any};
+function make_multinetwork_first(
+        sn_data::Dict{String,Any},n_scenarios,n_hours;
         global_keys = ["dim","name","per_unit","source_type","source_version"],
-        check_dim::Bool = true
+        check_dim::Bool = true,
     )
 
-    if _IM.ismultinetwork(sn_data)
-        Memento.error(_LOGGER, "`sn_data` argument must be a single network.")
-    end
-    if check_dim && !haskey(sn_data, "dim")
-        Memento.error(_LOGGER, "Missing `dim` dict in `sn_data` argument. The function `add_dimension!` must be called before `make_multinetwork`.")
-    end
+    #if _IM.ismultinetwork(sn_data)
+    #    Memento.error(_LOGGER, "`sn_data` argument must be a single network.")
+    #end
+    #if check_dim && !haskey(sn_data, "dim")
+    #    Memento.error(_LOGGER, "Missing `dim` dict in `sn_data` argument. The function `add_dimension!` must be called before `make_multinetwork`.")
+    #end
 
     mn_data = Dict{String,Any}("nw"=>Dict{String,Any}())
     _add_mn_global_values!(mn_data, sn_data, global_keys)
-    template_nw = _make_template_nw(sn_data, global_keys)
-    mn_data["nw"]["1"] = copy(template_nw)
-    add_hour_scenario(mn_data)
-
+    #template_nw = _make_template_nw(sn_data, global_keys)
+    for hour in 1:n_hours
+        for scenario_idx in 1:n_scenarios
+            n = (hour - 1) + scenario_idx
+            mn_data["nw"]["$n"] = deepcopy(sn_data)#_build_nw(template_nw, sn_data, time_series_idx; share_data = true)
+        end
+    end
     return mn_data
 end
 
@@ -81,6 +84,7 @@ function _add_time_series!(mn_data, sn_data, global_keys, time_series, number_of
     for time_series_idx in 1:number_of_nws
         n = time_series_idx + offset
         mn_data["nw"]["$n"] = _build_nw(template_nw, time_series, time_series_idx; share_data)
+        #add_hour_scenario(mn_data["nw"]["$n"])
     end
 end
 
@@ -132,12 +136,49 @@ function _build_nw(template_nw, time_series, idx; share_data)
     return nw
 end
 
-function add_hour_scenario(data)
-    for i in eachindex(data["dim"][:li])
-        index = CartesianIndices(data["dim"][:li])[i]
-        row, col = Tuple(index)
-        data["nw"]["$i"]["hour"] = row
-        data["nw"]["$i"]["scenario"] = col
-        data["nw"]["$i"]["hour_scenario_index"] = Tuple(index)
+
+
+function make_multinetwork_time_series(
+    sn_data::Dict{String,Any},n_scenarios,n_hours,time_series::Dict{String,Any};
+    global_keys = ["dim","name","per_unit","source_type","source_version"],
+    check_dim::Bool = true,
+    )
+
+    #if _IM.ismultinetwork(sn_data)
+    #    Memento.error(_LOGGER, "`sn_data` argument must be a single network.")
+    #end
+    #if check_dim && !haskey(sn_data, "dim")
+    #    Memento.error(_LOGGER, "Missing `dim` dict in `sn_data` argument. The function `add_dimension!` must be called before `make_multinetwork`.")
+    #end
+
+    mn_data = Dict{String,Any}("nw"=>Dict{String,Any}())
+    _FP._add_mn_global_values!(mn_data, sn_data, global_keys)
+    #template_nw = _make_template_nw(sn_data, global_keys)
+    for hour in 1:n_hours
+        for scenario_idx in 1:n_scenarios
+            n = (hour - 1)*n_scenarios + scenario_idx
+            mn_data["nw"]["$n"] = deepcopy(sn_data)#_build_nw(template_nw, sn_data, time_series_idx; share_data = true)
+            delete!(mn_data["nw"]["$n"],"dim")
+            add_hour_scenario_probability(mn_data,hour,scenario_idx,n,time_series)
+            for (g_id,g) in mn_data["nw"]["$n"]["gen"]
+                mn_data["nw"]["$n"]["gen"][g_id]["pmax"] = time_series["gen"][g_id]["$hour"]["$scenario_idx"]["pmax_hourly"]
+            end
+            for (l_id,l) in mn_data["nw"]["$n"]["load"]
+                mn_data["nw"]["$n"]["load"][l_id]["pd"] = time_series["load"][l_id]["$hour"]["$scenario_idx"]["pd"]
+            end
+        end
     end
+    return mn_data
+end
+
+function add_hour_scenario_probability(data,hour,scenario,index,time_series)
+    data["nw"]["$index"]["hour"] = hour
+    data["nw"]["$index"]["scenario"] = scenario
+    data["nw"]["$index"]["hour_scenario_index"] = [hour,scenario,index]
+    data["nw"]["$index"]["probability"] = time_series["scenario_probability"]["$index"]
+end
+
+function add_hour_scenario_data(data,hour,scenario)
+    data["hours"] = hour
+    data["scenarios"] = scenario
 end
