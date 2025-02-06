@@ -171,6 +171,12 @@ function make_multinetwork_time_series(
     return mn_data
 end
 
+function add_hour_scenario_data(data,hour,scenario)
+    data["hours"] = hour
+    data["scenarios"] = scenario
+end
+
+#=
 function add_hour_scenario_probability(data,hour,scenario,index,time_series)
     data["nw"]["$index"]["hour"] = hour
     data["nw"]["$index"]["scenario"] = scenario
@@ -178,7 +184,5 @@ function add_hour_scenario_probability(data,hour,scenario,index,time_series)
     data["nw"]["$index"]["probability"] = time_series["scenario_probability"]["$index"]
 end
 
-function add_hour_scenario_data(data,hour,scenario)
-    data["hours"] = hour
-    data["scenarios"] = scenario
-end
+
+=#

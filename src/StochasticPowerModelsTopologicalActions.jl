@@ -26,6 +26,9 @@ include("core/objective.jl")
 include("io/auxiliary_functions.jl")
 include("io/multinetwork.jl")
 include("core/constraint.jl")
+include("core/opf.jl")
+include("core/build_grid_data.jl")
+include("core/topological_actions.jl")
 include("core/constraint_template.jl")
 
 end

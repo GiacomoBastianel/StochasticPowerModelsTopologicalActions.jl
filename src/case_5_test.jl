@@ -6,9 +6,16 @@ using Gurobi
 using Ipopt
 using JSON
 import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerModelsTopologicalActions
+using JuMP
+using Juniper
+using HSL_jll
+
 
 gurobi = Gurobi.Optimizer
-ipopt = Ipopt.Optimizer
+ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
+juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 36000)
+
+
 #########################################################################################
 ##### Testing FlexPlan.jl functions to build multinetwork model with scenarios
 test_case_5_acdc = "case5_acdc.m"
@@ -17,17 +24,17 @@ data_file_5_acdc = joinpath(dirname(@__DIR__),"data_sources",test_case_5_acdc)
 data_5_acdc = _PM.parse_file(data_file_5_acdc)
 _PMACDC.process_additional_data!(data_5_acdc)
 data_5_acdc["gen"]["1"]["type"] = "Offshore Wind"
-data_5_acdc["gen"]["1"]["pmax"] = data_5_acdc["gen"]["1"]["pmax"]/2
+#data_5_acdc["gen"]["1"]["pmax"] = data_5_acdc["gen"]["1"]["pmax"]/2
 data_5_acdc["gen"]["2"]["type"] = "Other RES"
 
 data_5_acdc_opf = _PM.parse_file(data_file_5_acdc)
 _PMACDC.process_additional_data!(data_5_acdc_opf)
 data_5_acdc_opf["gen"]["1"]["type"] = "Offshore Wind"
-data_5_acdc_opf["gen"]["1"]["pmax"] = data_5_acdc_opf["gen"]["1"]["pmax"]/2
+#data_5_acdc_opf["gen"]["1"]["pmax"] = data_5_acdc_opf["gen"]["1"]["pmax"]/2
 data_5_acdc_opf["gen"]["2"]["type"] = "Other RES"
 
 
-n_hours = 4
+n_hours = 1
 n_scenarios = 8
 
 #########################################################################################
@@ -111,9 +118,8 @@ data_5_acdc_mn = _SPMTA.make_multinetwork_time_series(data_5_acdc,n_scenarios,n_
 data_5_acdc_opf_mn = _SPMTA.make_multinetwork_time_series(data_5_acdc_opf,n_scenarios,n_hours,time_series)
 
 #######################################
-
-result = _SPMTA.run_stochastic_acdcsw_AC_ZIL(data_5_acdc_mn, LPACCPowerModel, gurobi)
-result_opf = _SPMTA.run_stochastic_acdc_opf(data_5_acdc_opf_mn, LPACCPowerModel, gurobi)
+result = _SPMTA.run_stochastic_acdcsw_AC_ZIL(data_5_acdc_mn, ACPPowerModel, juniper)
+result_opf = _SPMTA.run_stochastic_acdc_opf(data_5_acdc_opf_mn, ACPPowerModel, ipopt)
 
 
 switch_result = Dict()
