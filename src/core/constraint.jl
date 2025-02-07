@@ -1,4 +1,3 @@
-using JuMP
 
 function constraint_switching_binaries(pm::_PM.AbstractPowerModel, n::Int, i)
     if n != 1
@@ -27,3 +26,48 @@ function constraint_switching_binaries_hour(pm::_PM.AbstractPowerModel, n::Int, 
     end 
 end
 
+#=
+function constraint_limit_switching_actions(pm::_PM.AbstractPowerModel, n::Int, i, ac_ZIL)
+    if !haskey(switch, "auxiliary")           
+        ZIL = _PM.var(pm, n, :z_switch, i)
+    end
+    JuMP.@constraint(pm.model,sum(ZIL_ac[i] for (i,n) in ac_ZIL) <= 1)ˆ
+end
+
+nw_list = collect(keys(pm.ref[:nw]))  # List of network indices
+=#
+
+
+function constraint_limit_switching_actions(pm::_PM.AbstractPowerModel, hours, scenarios)     
+    
+    scenario_idx = 1 # calling the first scenario
+    first_hours = []
+    for hour in 1:hours
+        push!(first_hours,(hour - 1)*scenarios + scenario_idx)
+    end
+    ac_ZIL = []
+    for hour in first_hours
+        if haskey(_PM.ref(pm,hour),:switch)
+            for (sw_id,sw) in _PM.ref(pm,hour,:switch)
+                if !haskey(sw, "auxiliary")
+                    push!(ac_ZIL,(sw_id,hour))
+                end
+            end
+        end
+    end
+    for (i,n) in ac_ZIL
+        println(i," ",n)
+    end
+
+    JuMP.@constraint(pm.model, 
+    2 <= 
+    sum(_PM.var(pm, n, :z_switch, sw_id) 
+    for (sw_id, n) in ac_ZIL)
+    )
+end
+
+#=
+sum(
+            sum( branch["construction_cost"]*var(pm, n, :branch_ne, i) for (i,branch) in nw_ref[:ne_branch] )
+        for (n, nw_ref) in nws(pm))
+            =#

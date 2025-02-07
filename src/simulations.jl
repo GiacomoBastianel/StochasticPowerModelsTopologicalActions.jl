@@ -109,10 +109,10 @@ P50_forecast_pu = Elia_OFW[29561]["dayahead11hforecast"]/Elia_OFW[29561]["monito
 #######################################################################################
 # Busbar splitting
 BE_grid_bs = deepcopy(BE_grid_lpac)
-
+#=
 Results_ac_761 = _SPMTA.hourly_opf(BE_grid,simulated_hour,simulated_hour,zones,Load_time_series,RES_time_series,s_dual,ipopt,ACPPowerModel)
 Results_lpac_761 = _SPMTA.hourly_opf(BE_grid_lpac,simulated_hour,simulated_hour,zones,Load_time_series,RES_time_series,s_dual,gurobi,LPACCPowerModel)
-
+=#
 #######################################################################################
 # Selecting which busbars are split
 splitted_bus_ac = [26,261]
@@ -122,6 +122,20 @@ optimizer = gurobi
 formulation = LPACCPowerModel
 
 BE_grid_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_more_buses(BE_grid_bs,splitted_bus_ac)
+
+
+switches_couples_ac_clean_up = deepcopy(switches_couples_ac)
+for (sw_id,sw) in switches_couples_ac_clean_up
+    for l in eachindex(switches_couples_ac_clean_up)
+        if sw["f_sw"] == switches_couples_ac_clean_up[l]["t_sw"] && sw["t_sw"] == switches_couples_ac_clean_up[l]["f_sw"]
+            delete!(switches_couples_ac_clean_up,l)
+        end
+    end
+end
+
+
+
+#=
 Results_bs = _SPMTA.hourly_bs(BE_grid_bs,simulated_hour,simulated_hour,zones,Load_time_series,RES_time_series,optimizer,formulation)
 
 # Print connection switches
@@ -137,7 +151,7 @@ end
 
 Results_feasibility_check, BE_grid_check = hourly_feasibility_check_bs_scenarios(BE_grid_bs,Results_bs,switches_couples_ac,extremes_ZILs_ac,hour,zones,Load_time_series,RES_time_series,gurobi,LPACCPowerModel,BE_grid,s_dual)
 Results_lpac_761["761"]["objective"]*10^2 - Results_feasibility_check["761"]["objective"]*10^2
-
+=#
 ###############################
 # Add dimensions for stochastic part
 n_hours = 1
@@ -172,34 +186,74 @@ _SPMTA.generate_input_dict_stochastic_optimization(time_series_hour,gen_time_ser
 _SPMTA.add_hour_scenario_data(BE_grid_bs, n_hours, n_scenarios)
 _SPMTA.add_hour_scenario_data(BE_grid_lpac, n_hours, n_scenarios)
 
+BE_grid_bs["switch_couples"]
+switches_couples_ac_clean_up
 
-BE_grid_bs_mn = _SPMTA.make_multinetwork_time_series_scenarios(BE_grid_bs,n_scenarios,hour_wind,simulated_hour,time_series_hour)
-BE_grid_bs_opf_mn = _SPMTA.make_multinetwork_time_series_scenarios(BE_grid_lpac,n_scenarios,hour_wind,simulated_hour,time_series_hour)
+BE_grid_bs["switch_couples"] = deepcopy(switches_couples_ac_clean_up)
+
+BE_grid_bs_mn = _SPMTA.make_multinetwork_time_series_scenarios(BE_grid_bs,n_scenarios,n_hours,hour_wind,simulated_hour,time_series_hour)
+BE_grid_bs_opf_mn = _SPMTA.make_multinetwork_time_series_scenarios(BE_grid_lpac,n_scenarios,n_hours,hour_wind,simulated_hour,time_series_hour)
 
 #######################################
-result = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn, LPACCPowerModel, gurobi)
-result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn, LPACCPowerModel, gurobi)
+#result = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn, LPACCPowerModel, gurobi)
+#result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn, LPACCPowerModel, gurobi)
+BE_grid_bs_mn["hours"] = n_hours
+BE_grid_bs_mn["scenarios"] = n_scenarios
 
+result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn,LPACCPowerModel,optimizer; setting = s)
+result_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
+result_la_no_OTS = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_no_OTS(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
+
+result_ZIL = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
+result_ZIL_no_OTS = _SPMTA.run_stochastic_acdcsw_AC_ZIL_no_OTS(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
+
+for i in 1:(n_hours*n_scenarios)
+    println(result_la["solution"]["nw"]["$i"]["switch"]["1"]["status"])
+    println(result_la["solution"]["nw"]["$i"]["switch"]["2"]["status"])
+end
 
 for i in 1:length(BE_grid_bs["switch"])
     if !haskey(BE_grid_bs["switch"]["$i"],"auxiliary")
-            println(i," f_bus ",BE_grid_bs["switch"]["$i"]["f_bus"]," t_bus ",BE_grid_bs["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"])
+            println(i," f_bus ",BE_grid_bs["switch"]["$i"]["f_bus"]," t_bus ",BE_grid_bs["switch"]["$i"]["t_bus"]," status ", result_ZIL_no_OTS["solution"]["nw"]["1"]["switch"]["$i"]["status"])
     else
-        if result["solution"]["nw"]["1"]["switch"]["$i"]["status"] == 1.0
-            println(i," t_bus ",BE_grid_bs["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"]," auxiliary ", BE_grid_bs["switch"]["$i"]["auxiliary"], " original ", BE_grid_bs["switch"]["$i"]["original"])
-        end
+        #if result_ZIL["solution"]["nw"]["1"]["switch"]["$i"]["status"] == 1.0
+            println(i," t_bus ",BE_grid_bs["switch"]["$i"]["t_bus"]," status ", result_ZIL_no_OTS["solution"]["nw"]["1"]["switch"]["$i"]["status"]," auxiliary ", BE_grid_bs["switch"]["$i"]["auxiliary"], " original ", BE_grid_bs["switch"]["$i"]["original"])
+        #end
     end
 end
 
+function print_switch_results(result, grid)
+    for i in 1:length(grid["switch"])
+        if !haskey(grid["switch"]["$i"],"auxiliary")
+            println(i," f_bus ",grid["switch"]["$i"]["f_bus"]," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"])
+        else
+            println(i," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"]," auxiliary ", grid["switch"]["$i"]["auxiliary"], " original ", grid["switch"]["$i"]["original"])
+        end
+    end
+end
+print_switch_results(result_la,BE_grid_bs_mn["nw"]["1"])
+print_switch_results(result_la_no_OTS,BE_grid_bs_mn["nw"]["1"])
+
+print_switch_results(result_ZIL,BE_grid_bs_mn["nw"]["1"])
+print_switch_results(result_ZIL_no_OTS,BE_grid_bs_mn["nw"]["1"])
+
+
+result_la["solution"]["nw"]["1"]["branch"]["258"]
+result_la["solution"]["nw"]["1"]["branch"]["259"]
+
+
+result_la_no_OTS["solution"]["nw"]["1"]["branch"]["258"]
+result_la_no_OTS["solution"]["nw"]["1"]["branch"]["259"]
 
 
 optimizer_feasibility_check = ipopt
 formulation_feasibility_check = ACPPowerModel
 hour = 761
-Results_feasibility_check, BE_grid_check_try = _SPMTA.hourly_feasibility_check_bs_scenarios_stochastic(BE_grid_lpac,result,switches_couples_ac,extremes_ZILs_ac,simulated_hour,zones,Load_time_series,RES_time_series,measured_pu,optimizer_feasibility_check,formulation_feasibility_check,BE_grid_lpac,s,1)
+Results_feasibility_check, BE_grid_check_try = _SPMTA.hourly_feasibility_check_bs_scenarios_stochastic(BE_grid_lpac,result_la_no_OTS,switches_couples_ac,extremes_ZILs_ac,simulated_hour,zones,Load_time_series,RES_time_series,measured_pu,optimizer_feasibility_check,formulation_feasibility_check,BE_grid_lpac,s,1)
 Results_feasibility_check["$simulated_hour"]
 
 
+Results_feasibility_check["$simulated_hour"]["solution"]["branch"]["37"]
 
 #################################
 # OPF measured
@@ -218,4 +272,32 @@ for i in 1:length(BE_grid_bs["switch"])
             println(i," t_bus ",BE_grid_bs["switch"]["$i"]["t_bus"]," status ", Result_bs_measured["$hour"]["solution"]["switch"]["$i"]["status"]," auxiliary ", BE_grid_bs["switch"]["$i"]["auxiliary"], " original ", BE_grid_bs["switch"]["$i"]["original"])
         end
     end
+end
+
+
+
+hours =    1#BE_grid_bs_mn["hours"]
+n_scenarios = BE_grid_bs_mn["scenarios"]
+
+hours = _PM.ref(pm,:hours)
+scenarios = _PM.ref(pm,:scenarios)
+
+scenario_idx = 1 # calling the first scenario
+first_hours = []
+for hour in 1:hours
+    push!(first_hours,(hour - 1)*n_scenarios + scenario_idx)
+end
+first_hours
+
+AC_ZIL = []
+for hours in first_hours
+    for (sw_id,sw) in BE_grid_bs_mn["nw"]["$hours"]["switch"]
+        if !haskey(sw, "auxiliary")
+            push!(AC_ZIL,(parse(Int64,sw_id),hours))
+        end
+    end
+end
+
+for (i,n) in AC_ZIL
+    println(i," ",n)
 end

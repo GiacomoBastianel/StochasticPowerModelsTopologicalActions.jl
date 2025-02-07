@@ -106,7 +106,7 @@ function generate_input_dict_stochastic_optimization(dict,gen_time_series,load_t
 end
 
 function make_multinetwork_time_series_scenarios(
-    sn_data::Dict{String,Any},n_scenarios,hours,hour_simulation,time_series::Dict{String,Any};
+    sn_data::Dict{String,Any},n_scenarios,n_hours,hours,hour_simulation,time_series::Dict{String,Any};
     global_keys = ["dim","name","per_unit","source_type","source_version"],
     check_dim::Bool = true,
     )
@@ -128,6 +128,8 @@ function make_multinetwork_time_series_scenarios(
             end
         end
     end
+    mn_data["scenarios"] = n_scenarios
+    mn_data["hours"] = n_hours
     return mn_data
 end
 
