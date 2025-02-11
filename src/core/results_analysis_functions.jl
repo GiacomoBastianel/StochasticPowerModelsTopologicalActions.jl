@@ -126,26 +126,6 @@ function compute_diff_vms(dict,grid,results_1,results_2,hour)
     end
 end
 
-function AC_lines_utilization(grid,results,dict)
-    for (br_id,br) in grid["branch"]
-        y = 1/(br["br_r"] + im * br["br_x"])
-        g = real(y)
-        b = imag(y)
-        tap = br["tap"]
-        angle_shift = br["shift"]
-        g_fr = br["g_fr"]
-        b_fr = br["b_fr"]
-        tm = tap
-        tr = tap .* cos.(angle_shift)
-        ti = tap .* sin.(angle_shift)
-        max_diff = pi/3
-        vm_fr = 0.9
-        vm_to = 1.1
-        dict["$br_id"] =  (g)/(1-results["solution"]["bus"]["$(br["f_bus"])"]["phi"])^2 + (-g)*(1-results["solution"]["bus"]["$(br["f_bus"])"]["phi"])*(1 - results["solution"]["bus"]["$(br["t_bus"])"]["phi"])*cos(max_diff) + (-b)*(1-results["solution"]["bus"]["$(br["f_bus"])"]["phi"])*(1-results["solution"]["bus"]["$(br["t_bus"])"]["phi"])*sin(max_diff)
-    end
-    return dict
-end
-
 function compute_vas_single_hour(dict,grid,results)
     #dict = Dict{Stri}()
     for (b_id,b) in grid["bus"]
@@ -185,4 +165,34 @@ function compute_diff_vms_single_hour(dict,grid,results)
         t_bus = br["t_bus"]
         dict["$br_id"] = abs((1-results["solution"]["bus"]["$f_bus"]["phi"])-(1-results["solution"]["bus"]["$t_bus"]["phi"]))
     end
+end
+
+function print_switch_results(result, grid)
+    for i in 1:length(grid["switch"])
+        if !haskey(grid["switch"]["$i"],"auxiliary")
+            println(i," f_bus ",grid["switch"]["$i"]["f_bus"]," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"])
+        else
+            println(i," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"]," auxiliary ", grid["switch"]["$i"]["auxiliary"], " original ", grid["switch"]["$i"]["original"])
+        end
+    end
+end
+
+function AC_lines_utilization(grid,results,dict)
+    for (br_id,br) in grid["branch"]
+        y = 1/(br["br_r"] + im * br["br_x"])
+        g = real(y)
+        b = imag(y)
+        tap = br["tap"]
+        angle_shift = br["shift"]
+        g_fr = br["g_fr"]
+        b_fr = br["b_fr"]
+        tm = tap
+        tr = tap .* cos.(angle_shift)
+        ti = tap .* sin.(angle_shift)
+        max_diff = pi/3
+        vm_fr = 0.9
+        vm_to = 1.1
+        dict["$br_id"] =  (g)/(1-results["solution"]["bus"]["$(br["f_bus"])"]["phi"])^2 + (-g)*(1-results["solution"]["bus"]["$(br["f_bus"])"]["phi"])*(1 - results["solution"]["bus"]["$(br["t_bus"])"]["phi"])*cos(max_diff) + (-b)*(1-results["solution"]["bus"]["$(br["f_bus"])"]["phi"])*(1-results["solution"]["bus"]["$(br["t_bus"])"]["phi"])*sin(max_diff)
+    end
+    return dict
 end

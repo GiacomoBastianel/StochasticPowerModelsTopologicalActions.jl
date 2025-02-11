@@ -199,6 +199,7 @@ BE_grid_bs_opf_mn = _SPMTA.make_multinetwork_time_series_scenarios(BE_grid_lpac,
 #result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn, LPACCPowerModel, gurobi)
 BE_grid_bs_mn["hours"] = n_hours
 BE_grid_bs_mn["scenarios"] = n_scenarios
+BE_grid_bs_mn["limit_actions"] = 2
 
 result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn,LPACCPowerModel,optimizer; setting = s)
 result_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
@@ -222,15 +223,6 @@ for i in 1:length(BE_grid_bs["switch"])
     end
 end
 
-function print_switch_results(result, grid)
-    for i in 1:length(grid["switch"])
-        if !haskey(grid["switch"]["$i"],"auxiliary")
-            println(i," f_bus ",grid["switch"]["$i"]["f_bus"]," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"])
-        else
-            println(i," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"]," auxiliary ", grid["switch"]["$i"]["auxiliary"], " original ", grid["switch"]["$i"]["original"])
-        end
-    end
-end
 print_switch_results(result_la,BE_grid_bs_mn["nw"]["1"])
 print_switch_results(result_la_no_OTS,BE_grid_bs_mn["nw"]["1"])
 
@@ -275,29 +267,3 @@ for i in 1:length(BE_grid_bs["switch"])
 end
 
 
-
-hours =    1#BE_grid_bs_mn["hours"]
-n_scenarios = BE_grid_bs_mn["scenarios"]
-
-hours = _PM.ref(pm,:hours)
-scenarios = _PM.ref(pm,:scenarios)
-
-scenario_idx = 1 # calling the first scenario
-first_hours = []
-for hour in 1:hours
-    push!(first_hours,(hour - 1)*n_scenarios + scenario_idx)
-end
-first_hours
-
-AC_ZIL = []
-for hours in first_hours
-    for (sw_id,sw) in BE_grid_bs_mn["nw"]["$hours"]["switch"]
-        if !haskey(sw, "auxiliary")
-            push!(AC_ZIL,(parse(Int64,sw_id),hours))
-        end
-    end
-end
-
-for (i,n) in AC_ZIL
-    println(i," ",n)
-end

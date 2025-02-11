@@ -45,11 +45,11 @@ function fix_res_time_series_measured(grid,hour,zones,res_time_series,P_value)
     end
 end
 
-function add_scenarios_probabilities(scenarios_probabilities_dict,hour_wind,n_hours,n_scenarios,scenario_samples_dict)
+function add_scenarios_probabilities(scenarios_probabilities_dict,start_hour,n_hours,n_scenarios,scenario_samples_dict)
     for i in 1:n_hours
         for j in 1:n_scenarios
             n = (i - 1)*n_scenarios + j
-            scenarios_probabilities_dict["$n"] = scenario_samples_dict["$hour_wind"]["pdf_normalized"][j]
+            scenarios_probabilities_dict["$n"] = scenario_samples_dict["$(start_hour)"]["pdf_normalized"][j]
         end
     end
 end
