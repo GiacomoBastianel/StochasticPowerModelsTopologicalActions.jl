@@ -9,9 +9,9 @@ import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerMo
 using JuMP
 using Juniper
 using HSL_jll
+using MathOptInterface
 
-gurobi_e_3 = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 7200,"MIPGap" => 2e-3)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
-
+gurobi_e_3 = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 7200,"MIPGap" => 1e-3)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
 gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 7200)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
 ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
 juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 36000)
@@ -72,7 +72,7 @@ BE_grid = _PM.parse_file(BE_grid_2024_file)
 BE_grid_2024_lpac_file = joinpath(dirname(dirname(input_folder)),"test_cases/DIRECTIONS_test_case_Step_1_no_OWF_UK_corrected_LPAC.json")
 BE_grid_lpac = _PM.parse_file(BE_grid_2024_lpac_file)
 for (g_id,g) in BE_grid_lpac["gen"]
-    g["cost"][1] = g["cost"][1]/100
+    g["cost"][1] = g["cost"][1]/10^3
 end
 BE_grid_bs = deepcopy(BE_grid_lpac)
 
@@ -81,8 +81,8 @@ splitted_bus_ac = [26,261]
 name_splitted_buses = "26_261"
 
 BE_grid_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_more_buses(BE_grid_bs,splitted_bus_ac)
-BE_grid_bs["switch"]["1"]["maximum_actions"] = 1
-BE_grid_bs["switch"]["2"]["maximum_actions"] = 1
+BE_grid_bs["switch"]["1"]["maximum_actions"] = 12
+BE_grid_bs["switch"]["2"]["maximum_actions"] = 12
 
 
 s = Dict("output" => Dict("branch_flows" => true), "conv_losses_mp" => true)
@@ -269,29 +269,27 @@ function add_hour_scenario_probability(data,hour,scenario,index,time_series)
     data["nw"]["$index"]["probability"] = time_series["scenario_probability"]["$index"]
 end
 
-BE_grid_bs_mn = make_multinetwork_time_series_scenarios(BE_grid_bs,n_scenarios,n_hours,hours,start_hour_simulation-1,time_series_hour)
 BE_grid_bs_opf_mn = make_multinetwork_time_series_scenarios(BE_grid_lpac,n_scenarios,n_hours,hours,start_hour_simulation-1,time_series_hour)
 
+result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn,LPACCPowerModel,gurobi; setting = s)
+
+gurobi_e_3 = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 7200,"MIPGap" => 1e-4)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
+optimizer = gurobi_e_3
+
+BE_grid_bs_mn = make_multinetwork_time_series_scenarios(BE_grid_bs,n_scenarios,n_hours,hours,start_hour_simulation-1,time_series_hour)
 BE_grid_bs_mn["hours"] = n_hours
 BE_grid_bs_mn["scenarios"] = n_scenarios
-BE_grid_bs_mn["limit_actions"] = 26
+BE_grid_bs_mn["limit_actions"] = 24
+#BE_grid_bs_mn["opf_result"] = result_opf["objective"]
 
 
-optimizer = gurobi_e_3
-result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_bs_opf_mn,LPACCPowerModel,optimizer; setting = s)
-
-#result_opf["objective"]*10^4
-
-gurobi_e_3 = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 7200,"MIPGap" => 1.6e-3)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
-optimizer = gurobi_e_3
+result_ZIL = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn,LPACCPowerModel,gurobi_e_3; setting = s)
+result_ZIL_no_OTS = _SPMTA.run_stochastic_acdcsw_AC_ZIL_no_OTS(BE_grid_bs_mn,LPACCPowerModel,gurobi_e_3; setting = s)
 
 #=
-result_ZIL = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
-result_ZIL_no_OTS = _SPMTA.run_stochastic_acdcsw_AC_ZIL_no_OTS(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
+result_ZIL["objective"]*10^5
 
-result_ZIL["objective"]*10^4
-
-(result_opf["objective"]*10^4 - result_ZIL["objective"]*10^4)/(result_opf["objective"]*10^4)
+(result_opf["objective"]*10^5 - result_ZIL["objective"]*10^5)/(result_opf["objective"]*10^5)
 
 result_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
 result_la_no_OTS = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_no_OTS(BE_grid_bs_mn,LPACCPowerModel,optimizer; setting = s)
@@ -432,3 +430,83 @@ for i in eachindex(result_la_no_OTS_sw_all["solution"]["nw"])
 end
 count_sw_1_
 count_sw_2_
+
+
+result_opf["objective"]*10^5
+result_ZIL["objective"]*10^5
+result_ZIL_no_OTS["objective"]*10^5 
+result_la["objective"]*10^5
+result_la_no_OTS["objective"]*10^5
+result_la_sw["objective"]*10^5
+result_la_no_OTS_sw["objective"]*10^5
+result_la_sw_all["objective"]*10^5
+result_la_no_OTS_sw_all["objective"]*10^5
+
+
+result_opf
+result_ZIL
+result_ZIL_no_OTS
+result_la
+result_la_no_OTS
+result_la_sw
+result_la_no_OTS_sw
+result_la_sw_all
+result_la_no_OTS_sw_all
+
+result_opf["objective"]*10^5 - result_ZIL["objective"]*10^5
+result_opf["objective"]*10^5 - result_ZIL_no_OTS["objective"]*10^5
+result_opf["objective"]*10^5 - result_la["objective"]*10^5
+result_opf["objective"]*10^5 - result_la_no_OTS["objective"]*10^5
+result_opf["objective"]*10^5 - result_la_sw["objective"]*10^5
+result_opf["objective"]*10^5 - result_la_no_OTS_sw["objective"]*10^5
+result_opf["objective"]*10^5 - result_la_sw_all["objective"]*10^5
+result_opf["objective"]*10^5 - result_la_no_OTS_sw_all["objective"]*10^5
+
+
+
+
+json_string = JSON.json(result_opf)
+open(joinpath(results_folder,"Results_OPF_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_ZIL)
+open(joinpath(results_folder,"Results_ZIL_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_ZIL_no_OTS)
+open(joinpath(results_folder,"Results_ZIL_no_OTS_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_la)
+open(joinpath(results_folder,"Results_la_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_la_no_OTS)
+open(joinpath(results_folder,"Results_la_no_OTS_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_la_sw)
+open(joinpath(results_folder,"Results_la_sw_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+
+json_string = JSON.json(result_la_no_OTS_sw)
+open(joinpath(results_folder,"Results_la_no_OTS_sw_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_la_sw_all)
+open(joinpath(results_folder,"Results_la_sw_all_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end
+
+json_string = JSON.json(result_la_no_OTS_sw_all)
+open(joinpath(results_folder,"Results_la_no_OTS_sw_all_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year)_$(n_hours)_hours_$(n_scenarios)_scenarios.json"),"w") do f 
+    write(f, json_string) 
+end

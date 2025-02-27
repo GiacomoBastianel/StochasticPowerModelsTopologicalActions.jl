@@ -3,7 +3,7 @@ export run_stochastic_acdc_opf
 # AC Busbar splitting for AC/DC grid
 "ACDC opf with controllable switches in AC busbar splitting configuration for AC/DC grids"
 function run_stochastic_acdc_opf(file, model_constructor, optimizer; kwargs...)
-    _FP.require_dim(file, :hour, :scenario)
+    #_FP.require_dim(file, :hour, :scenario)
     return _PM.solve_model(file, model_constructor, optimizer, build_stochastic_acdc_opf; 
     ref_extensions=[_PMACDC.add_ref_dcgrid!,_PM.ref_add_on_off_va_bounds!], 
     multinetwork = true,
@@ -12,7 +12,7 @@ end
 
 ""
 function build_stochastic_acdc_opf(pm::_PM.AbstractPowerModel)
-    for n in _FP.nw_ids(pm)
+    for n in 1:length(pm.ref[:it][_PM.pm_it_sym][:nw])
         _PM.variable_bus_voltage(pm; nw = n)
         _PM.variable_gen_power(pm; nw = n)
         _PM.variable_branch_power(pm; nw = n)

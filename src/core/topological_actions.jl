@@ -33,3 +33,8 @@ function hourly_bs_scenarios(grid,hours,zones,load_time_series,res_time_series,P
     end
     return results
 end
+
+function add_dimensions!(data::Dict{String,Any},n_scenarios::Int,n_hours::Int)
+    data["scenarios"] = n_scenarios
+    data["hours"] = n_hours
+end

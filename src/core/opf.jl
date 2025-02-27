@@ -10,6 +10,18 @@ function hourly_opf(grid,hour_start,hour_end,zones,load_time_series,res_time_ser
     return results
 end
 
+function hourly_opf_nw(grid,hour_start,hour_end,zones,load_time_series,res_time_series,s,optimizer,formulation)
+    results = Dict()
+    hourly_grid = deepcopy(grid)
+    for hour in hour_start:hour_end
+        fix_hourly_load(hourly_grid,hour,zones,load_time_series) 
+        fix_res_time_series(hourly_grid,hour,zones,res_time_series)
+        hourly_results = _PMACDC.run_acdcopf(hourly_grid,formulation, optimizer; setting = s)
+        results["$hour"] = deepcopy(hourly_results)
+    end
+    return results
+end
+
 function hourly_opf_measured(grid,hour_start,hour_end,zones,load_time_series,res_time_series,s,optimizer,formulation,measured_pu)
     results = Dict()
     hourly_grid = deepcopy(grid)
