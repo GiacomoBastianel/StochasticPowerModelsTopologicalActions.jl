@@ -31,6 +31,7 @@ include("core/constraint.jl")
 include("core/opf.jl")
 include("core/build_grid_data.jl")
 include("core/topological_actions.jl")
+include("core/multistep_stochastic_function.jl")
 include("core/constraint_template.jl")
 
 end

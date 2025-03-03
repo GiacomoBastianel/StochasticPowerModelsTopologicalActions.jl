@@ -12,10 +12,11 @@ using Juniper
 using HSL_jll
 using MathOptInterface
 
-gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 600,"MIPGap" => 2e-2)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
+mip_gap = 1e-3
+gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 600,"MIPGap" => mip_gap)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
 ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
 juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 36000)
-mip_gap = 3e-3
+
 #########################################################################################
 ## Processing input data
 input_folder = "/Users/giacomobastianel/.julia/dev/DIRECTIONS_WP4.jl/src/Step_1"
@@ -41,7 +42,7 @@ cf_Line = JSON.parsefile(file_cf_Line_name)
 
 n_hours = 2
 start_hour_simulation = 6010
-end_hour_simulation = 6011 #6033
+end_hour_simulation = 6012 #6033
 hours = collect(start_hour_simulation:end_hour_simulation)
 n_scenarios = 8
 
@@ -77,13 +78,21 @@ input_folder = "/Users/giacomobastianel/.julia/dev/DIRECTIONS_WP4.jl/src/Step_1"
 # Belgium grid without energy island
 BE_grid_2024_file = joinpath(dirname(dirname(input_folder)),"test_cases/DIRECTIONS_test_case_Step_1_no_OWF_UK_corrected_LPAC.json")
 BE_grid_6010_6033 = _PM.parse_file(BE_grid_2024_file)
-BE_grid_6010_6033["gen"]["1292"]["cost"][1] = 15.0
+#BE_grid_6010_6033["gen"]["1292"]["cost"][1] = 15.0
+#for (g_id,g) in BE_grid_6010_6033["gen"]
+#    if g["type"] != "Offshore Wind" #&& g["type"] != "Solar PV" && g["type"] != "Onshore Wind"
+#        println(g_id,"  ",g["type"])
+#        g["cost"][1] = g["cost"][1]*4.0
+#    end
+#end
+
 
 BE_grid_bs_6010_6033 = deepcopy(BE_grid_6010_6033)
 BE_grid_opf_6010_6033 = deepcopy(BE_grid_6010_6033)
 
 splitted_bus_ac = [26,261]
 name_splitted_buses = "26_261"
+
 
 BE_grid_bs_6010_6033,  switches_couples_ac_6010_6033,  extremes_ZILs_ac_6010_6033  = _PMTP.AC_busbar_split_more_buses(BE_grid_bs_6010_6033,splitted_bus_ac)
 BE_grid_bs_6010_6033["switch"]["1"]["maximum_actions"] = 12
@@ -140,18 +149,12 @@ _SPMTA.add_hour_scenario_data(BE_grid_opf_6010_6033, n_hours, n_scenarios)
 BE_grid_bs_mn_6010_6033 = _SPMTA.make_multinetwork_time_series_tyndp_scenarios(BE_grid_bs_6010_6033,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones)
 BE_grid_opf_mn_6010_6033 = _SPMTA.make_multinetwork_time_series_tyndp_scenarios(BE_grid_opf_6010_6033,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones)
 
-#=
-count_ = 0
-for nw in start_hour_simulation:end_hour_simulation
-    count_ += 1
-    BE_grid_bs_opf_mn_6010_6033["nw"]["$count_"]["probability"] = 1
-end
-=#
+
 result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
 result_ac_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,ACPPowerModel,ipopt; setting = s)
 
 ########################################################################################################
-gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 1200,"MIPGap" => mip_gap)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
+gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 2400,"MIPGap" => mip_gap)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
 
 result_ZIL = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
 BE_grid_bs_mn_6010_6033["limit_actions"] = 2
@@ -348,6 +351,32 @@ function prepare_starting_value_dict_lpac_nw(result,grid,start_hour_simulation,e
                     #sw["starting_value"] = 0.0
                 end
             end
+            #=
+            for (b_id,b) in grid["nw"]["$n"]["branch"]
+                if abs(result["solution"]["nw"]["$n"]["branch"]["$b_id"]["pf"]) < 10^(-5)
+                    b["pf_starting_value"] = 0.0
+                else
+                    b["pf_starting_value"] = result["solution"]["nw"]["$n"]["branch"]["$b_id"]["pf"]
+                end
+                if abs(result["solution"]["nw"]["$n"]["branch"]["$b_id"]["qf"]) < 10^(-5)
+                    b["qf_starting_value"] = 0.0
+                else
+                    b["qf_starting_value"] = result["solution"]["nw"]["$n"]["branch"]["$b_id"]["qf"]
+                end
+            end
+            for (b_id,b) in grid["nw"]["$n"]["branchdc"]
+                if abs(result["solution"]["nw"]["$n"]["branchdc"]["$b_id"]["pf"]) < 10^(-5)
+                    b["pf_starting_value"] = 0.0
+                else
+                    b["pf_starting_value"] = result["solution"]["nw"]["$n"]["branchdc"]["$b_id"]["pf"]
+                end
+                if abs(result["solution"]["nw"]["$n"]["branchdc"]["$b_id"]["qf"]) < 10^(-5)
+                    b["qf_starting_value"] = 0.0
+                else
+                    b["qf_starting_value"] = result["solution"]["nw"]["$n"]["branchdc"]["$b_id"]["qf"]
+                end
+            end
+            =#
         end
     end
 end
@@ -560,12 +589,9 @@ result_opf_check = _SPMTA.run_stochastic_acdc_opf(feas_check_grid_auxiliary,LPAC
 BE_grid_bs_mn_6010_6033_sp = deepcopy(BE_grid_bs_mn_6010_6033)
 prepare_starting_value_dict_lpac_nw(result_opf,BE_grid_bs_mn_6010_6033_sp,start_hour_simulation,end_hour_simulation,n_scenarios)
 result_ZIL_sp = _SPMTA.run_stochastic_acdcsw_AC_ZIL_sp(BE_grid_bs_mn_6010_6033_sp,LPACCPowerModel,gurobi; setting = s)
+BE_grid_bs_mn_6010_6033_sp["limit_actions"] = 2
 result_ZIL_sp_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_sp(BE_grid_bs_mn_6010_6033_sp,LPACCPowerModel,gurobi; setting = s)
 
-BE_grid_bs_mn_6010_6033_sp_ac = deepcopy(BE_grid_bs_mn_6010_6033)
-prepare_starting_value_dict_nw(result_ac_opf,BE_grid_bs_mn_6010_6033_sp_ac,start_hour_simulation,end_hour_simulation,n_scenarios)
-result_ZIL_sp = _SPMTA.run_stochastic_acdcsw_AC_ZIL_sp(BE_grid_bs_mn_6010_6033_sp_ac,LPACCPowerModel,gurobi; setting = s)
-result_ZIL_sp_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_sp(BE_grid_bs_mn_6010_6033_sp_ac,LPACCPowerModel,gurobi; setting = s)
 
 
 for (g_id,g) in BE_grid_6010_6033["gen"]
