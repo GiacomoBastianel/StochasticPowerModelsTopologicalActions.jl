@@ -13,7 +13,7 @@ using HSL_jll
 using MathOptInterface
 
 mip_gap = 1e-4
-gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "time_limit" => 7200,"MIPGap" => mip_gap)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
+gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 300,"MIPGap" => mip_gap)#,"BarQCPConvTol"=>1e-4,"QCPDual" => 1)#r, "ScaleFlag"=>2, "NumericFocus"=>2) 
 ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
 juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 36000)
 
@@ -85,15 +85,12 @@ BE_grid_opf_6010_6033 = deepcopy(BE_grid_6010_6033)
 splitted_bus_ac = [26,261]
 name_splitted_buses = "26_261"
 
-
 BE_grid_bs_6010_6033,  switches_couples_ac_6010_6033,  extremes_ZILs_ac_6010_6033  = _PMTP.AC_busbar_split_more_buses(BE_grid_bs_6010_6033,splitted_bus_ac)
-#BE_grid_bs_6010_6033["switch"]["1"]["maximum_actions"] = 12
-#BE_grid_bs_6010_6033["switch"]["2"]["maximum_actions"] = 12
-
+BE_grid_bs_6010_6033["switch"]["1"]["maximum_actions"] = 12
+BE_grid_bs_6010_6033["switch"]["2"]["maximum_actions"] = 12
 
 s = Dict("output" => Dict("branch_flows" => true), "conv_losses_mp" => true)
 s_dual = Dict("output" => Dict("branch_flows" => true,"duals" => true), "conv_losses_mp" => true)
-
 #########################################################################################
 # Add dimensions for stochastic part
 _SPMTA.add_dimensions!(BE_grid_bs_6010_6033,n_scenarios,n_hours)
@@ -144,10 +141,29 @@ result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,LPACCPowerM
 result_ac_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,ACPPowerModel,ipopt; setting = s)
 
 ########################################################################################################
+function run_stochastic_acdcsw_AC_ZIL_hourly(grid, model, optimizer, n_hours, n_scenarios,result; setting = s)
+    for hour in 1:n_hours
+        scenarios_hour = collect(((hour-1)*n_scenarios + 1):(hour*n_scenarios))
+        grid_hour = deepcopy(grid)
+        grid_hour["hours"] = 1
+        grid_hour["nw"]= Dict{String,Any}()
+        for i in scenarios_hour
+            grid_hour["nw"]["$i"] = deepcopy(grid["nw"]["$i"])
+        end    
+        result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly(grid_hour,model,optimizer; setting = setting)
+    end
+    return result
+end
 
-result_ZIL = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
-BE_grid_bs_mn_6010_6033["limit_actions"] = 12
-result_ZIL_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
+result_hourly_bs = Dict{String,Any}()
+@time run_stochastic_acdcsw_AC_ZIL_hourly(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi,n_hours,n_scenarios,result_hourly_bs; setting = s)
+bs_total_costs = sum([result_hourly_bs["$i"]["objective"] for i in 1:n_hours])
+term_status = [result_hourly_bs["$i"]["primal_status"] for i in 1:n_hours]
+
+
+result_ZIL_short = _SPMTA.run_stochastic_acdcsw_AC_ZIL(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
+BE_grid_bs_mn_6010_6033["limit_actions"] = 26
+result_ZIL_la_short = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
 
 println("The reduction in generation costs with busbar splitting is $(((result_opf["objective"] - result_ZIL["objective"]   )/result_opf["objective"])*100)%, with a MIP gap of $(mip_gap*100)%")
 println("The reduction in generation costs with busbar splitting is $(((result_opf["objective"] - result_ZIL_la["objective"])/result_opf["objective"])*100)%, with a MIP gap of $(mip_gap*100)%")
@@ -297,35 +313,35 @@ function prepare_starting_value_dict_lpac_nw(result,grid,start_hour_simulation,e
         count_ += 1
         for scenario_idx in 1:n_scenarios
             n = (count_ - 1)*n_scenarios + scenario_idx
-            #for (b_id,b) in grid["nw"]["$n"]["bus"]
-            #    if haskey(result["solution"]["nw"]["$n"]["bus"],b_id)
-            #        if abs(result["solution"]["nw"]["$n"]["bus"]["$b_id"]["va"]) < 10^(-4)
-            #            b["va_starting_value"] = 0.0
-            #        else
-            #            b["va_starting_value"] = result["solution"]["nw"]["$n"]["bus"]["$b_id"]["va"]
-            #        end
-            #        if abs(result["solution"]["nw"]["$n"]["bus"]["$b_id"]["phi"]) < 10^(-4)
-            #            b["phi_starting_value"] = 0.0
-            #        else
-            #            b["phi_starting_value"] = result["solution"]["nw"]["$n"]["bus"]["$b_id"]["phi"]
-            #        end
-            #    else
-            #        b["va_starting_value"] = 0.0
-            #        b["phi_starting_value"] = 0.1
-            #    end
-            #end
-            #for (b_id,b) in grid["nw"]["$n"]["gen"]
-            #    if abs(result["solution"]["nw"]["$n"]["gen"]["$b_id"]["pg"]) < 10^(-5)
-            #        b["pg_starting_value"] = 0.0
-            #    else
-            #        b["pg_starting_value"] = result["solution"]["nw"]["$n"]["gen"]["$b_id"]["pg"]
-            #    end
-            #    if abs(result["solution"]["nw"]["$n"]["gen"]["$b_id"]["qg"]) < 10^(-5)
-            #        b["qg_starting_value"] = 0.0
-            #    else
-            #        b["qg_starting_value"] = result["solution"]["nw"]["$n"]["gen"]["$b_id"]["qg"]
-            #    end
-            #end
+            for (b_id,b) in grid["nw"]["$n"]["bus"]
+                if haskey(result["solution"]["nw"]["$n"]["bus"],b_id)
+                    if abs(result["solution"]["nw"]["$n"]["bus"]["$b_id"]["va"]) < 10^(-4)
+                        b["va_starting_value"] = 0.0
+                    else
+                        b["va_starting_value"] = result["solution"]["nw"]["$n"]["bus"]["$b_id"]["va"]
+                    end
+                    if abs(result["solution"]["nw"]["$n"]["bus"]["$b_id"]["phi"]) < 10^(-4)
+                        b["phi_starting_value"] = 0.0
+                    else
+                        b["phi_starting_value"] = result["solution"]["nw"]["$n"]["bus"]["$b_id"]["phi"]
+                    end
+                else
+                    b["va_starting_value"] = 0.0
+                    b["phi_starting_value"] = 0.0
+                end
+            end
+            for (b_id,b) in grid["nw"]["$n"]["gen"]
+                if abs(result["solution"]["nw"]["$n"]["gen"]["$b_id"]["pg"]) < 10^(-5)
+                    b["pg_starting_value"] = 0.0
+                else
+                    b["pg_starting_value"] = result["solution"]["nw"]["$n"]["gen"]["$b_id"]["pg"]
+                end
+                if abs(result["solution"]["nw"]["$n"]["gen"]["$b_id"]["qg"]) < 10^(-5)
+                    b["qg_starting_value"] = 0.0
+                else
+                    b["qg_starting_value"] = result["solution"]["nw"]["$n"]["gen"]["$b_id"]["qg"]
+                end
+            end
             for (sw_id,sw) in grid["nw"]["$n"]["switch"]
                 if !haskey(sw,"auxiliary") # calling ZILs
                     sw["starting_value"] = 1.0
@@ -602,13 +618,13 @@ result_opf_check = _SPMTA.run_stochastic_acdc_opf(feas_check_grid_auxiliary,LPAC
 prepare_AC_feasibility_check_stochastic_multistep(result_ZIL_la,feas_check_grid_la,feas_check_grid_auxiliary_la,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,n_scenarios)
 result_opf_check_la = _SPMTA.run_stochastic_acdc_opf(feas_check_grid_auxiliary_la,LPACCPowerModel,gurobi; setting = s)
 
-
-
 BE_grid_bs_mn_6010_6033_sp = deepcopy(BE_grid_bs_mn_6010_6033)
+BE_grid_bs_mn_6010_6033_ac_sp = deepcopy(BE_grid_bs_mn_6010_6033)
+prepare_starting_value_dict_nw(result_ac_opf,BE_grid_bs_mn_6010_6033_ac_sp,start_hour_simulation,end_hour_simulation,n_scenarios)
 prepare_starting_value_dict_lpac_nw(result_opf,BE_grid_bs_mn_6010_6033_sp,start_hour_simulation,end_hour_simulation,n_scenarios)
-result_ZIL_sp = _SPMTA.run_stochastic_acdcsw_AC_ZIL_sp(BE_grid_bs_mn_6010_6033_sp,LPACCPowerModel,gurobi; setting = s)
-BE_grid_bs_mn_6010_6033_sp["limit_actions"] = 12
-result_ZIL_sp_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_sp(BE_grid_bs_mn_6010_6033_sp,LPACCPowerModel,gurobi; setting = s)
+result_ZIL_sp_short = _SPMTA.run_stochastic_acdcsw_AC_ZIL_sp(BE_grid_bs_mn_6010_6033_sp,LPACCPowerModel,gurobi; setting = s)
+BE_grid_bs_mn_6010_6033_sp["limit_actions"] = 26
+result_ZIL_sp_la_short = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_sp(BE_grid_bs_mn_6010_6033_sp,LPACCPowerModel,gurobi; setting = s)
 
 feas_check_grid_sp = deepcopy(BE_grid_bs_mn_6010_6033)
 feas_check_grid_auxiliary_sp = deepcopy(BE_grid_bs_mn_6010_6033)
@@ -731,7 +747,22 @@ BE_grid_opf_mn_6010_6033_forecasted = make_multinetwork_time_series_opf_check(BE
 
 opf_measured = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033_measured,LPACCPowerModel,gurobi; setting = s)
 opf_forecasted = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033_forecasted,LPACCPowerModel,gurobi; setting = s)
-bs_measured = _SPMTA.run_stochastic_acdcsw_AC_ZIL_sp(BE_grid_bs_mn_6010_6033_measured,LPACCPowerModel,gurobi; setting = s)
+
+function run_stochastic_acdcsw_AC_ZIL_hourly_measured(grid, model, optimizer, n_hours,result; setting = s)
+    for hour in 1:n_hours
+        grid_hour = deepcopy(grid)
+        grid_hour["hours"] = 1
+        grid_hour["nw"]= Dict{String,Any}()
+        grid_hour["nw"]["$hour"] = deepcopy(grid["nw"]["$hour"])  
+        result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly(grid_hour,model,optimizer; setting = setting)
+    end
+    return result
+end
+
+bs_measured = Dict{String,Any}()
+run_stochastic_acdcsw_AC_ZIL_hourly_measured(BE_grid_bs_mn_6010_6033_measured,LPACCPowerModel,gurobi,n_hours,bs_measured; setting = s)
+sum(bs_measured["$i"]["objective"] for i in 1:n_hours)
+
 BE_grid_bs_mn_6010_6033_measured["limit_actions"] = 12
 BE_grid_bs_mn_6010_6033_measured["scenarios"] = 1
 bs_measured_la = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limited_actions_sp(BE_grid_bs_mn_6010_6033_measured,LPACCPowerModel,gurobi; setting = s)
@@ -752,6 +783,7 @@ bs_forecasted_la_json = JSON.json(bs_forecasted_la)
 open(joinpath(folder_results,"Results_OPF_measured_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"),"w" ) do f
     write(f,opf_measured_json)
 end
+
 open(joinpath(folder_results,"Results_OPF_forecasted_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"),"w" ) do f
     write(f,opf_forecasted_json)
 end
@@ -770,8 +802,7 @@ end
 open(joinpath(folder_results,"Results_BS_la_forecasted_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"),"w" ) do f
     write(f,bs_forecasted_la_json)
 end
-
-
+## I HAVE TO TAKE THE STATUS OF THE SWITCHES AND APPLY THE MEASURED TIME SERIES
 feas_check_grid_measured              = deepcopy(BE_grid_bs_mn_6010_6033_measured   )
 feas_check_grid_auxiliary_measured    = deepcopy(BE_grid_opf_mn_6010_6033_measured  )
 feas_check_grid_la_measured              = deepcopy(BE_grid_bs_mn_6010_6033_measured   )
@@ -786,9 +817,6 @@ feas_check_grid_auxiliary_la_forecasted = deepcopy(BE_grid_opf_mn_6010_6033_fore
 prepare_AC_feasibility_check_stochastic_multistep(bs_measured,feas_check_grid_measured,feas_check_grid_auxiliary_measured,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
 result_opf_check_measured = _SPMTA.run_stochastic_acdc_opf(feas_check_grid_auxiliary,LPACCPowerModel,gurobi; setting = s)
 
-
-
-
 # Something shady is going here, check 
 prepare_AC_feasibility_check_stochastic_multistep(bs_forecasted,feas_check_grid_forecasted,feas_check_grid_auxiliary_forecasted,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
 result_opf_check_forecasted = _SPMTA.run_stochastic_acdc_opf(feas_check_grid_auxiliary_forecasted,LPACCPowerModel,gurobi; setting = s)
@@ -801,7 +829,202 @@ prepare_AC_feasibility_check_stochastic_multistep(bs_forecasted,feas_check_grid_
 result_opf_check_measured_with_forecasted_topology = _SPMTA.run_stochastic_acdc_opf(feas_check_grid_auxiliary_forecasted_check,LPACCPowerModel,gurobi; setting = s)
 # -> good this seems to work as intended
 
-# OPF with forecasted value
+check_json = JSON.json(result_opf_check_measured_with_forecasted_topology)
+
+open(joinpath(folder_results,"Results_OPF_measured_with_forecasted_topology_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"),"w" ) do f
+    write(f,check_json)
+end
+
+#############################################################################################
+# Uploading results
+result_ZIL = JSON.parsefile(joinpath(folder_results,"Results_ZIL_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+result_ZIL_la = JSON.parsefile(joinpath(folder_results,"Results_ZIL_la_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+
+result_ZIL_sp    = JSON.parsefile(joinpath(folder_results,"Results_ZIL_sp_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+result_ZIL_sp_la = JSON.parsefile(joinpath(folder_results,"Results_ZIL_la_sp_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+
+bs_measured   = JSON.parsefile(joinpath(folder_results,"Results_BS_measured_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+bs_forecasted = JSON.parsefile(joinpath(folder_results,"Results_BS_forecasted_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+opf_forecasted   = JSON.parsefile(joinpath(folder_results,"Results_OPF_measured_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+opf_measured = JSON.parsefile(joinpath(folder_results,"Results_OPF_forecasted_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+result_opf_check_measured_with_forecasted_topology = JSON.parsefile(joinpath(folder_results,"Results_OPF_measured_with_forecasted_topology_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
+
+#############################################################################################
+CHECK_result_ZIL   = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+CHECK_result_ZIL_auxiliary = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+
+CHECK_result_ZIL_la   = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+CHECK_result_ZIL_la_auxiliary = deepcopy(BE_grid_bs_mn_6010_6033_measured)
 
 
-# OPF with measured value
+CHECK_result_ZIL_sp   = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+CHECK_result_ZIL_sp_auxiliary = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+
+CHECK_result_ZIL_sp_la   = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+CHECK_result_ZIL_sp_la_auxiliary = deepcopy(BE_grid_bs_mn_6010_6033_measured)
+
+
+prepare_AC_feasibility_check_stochastic_multistep(result_ZIL,CHECK_result_ZIL,CHECK_result_ZIL_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
+OPF_CHECK_result_ZIL = _SPMTA.run_stochastic_acdc_opf(CHECK_result_ZIL_auxiliary,LPACCPowerModel,gurobi; setting = s)
+
+prepare_AC_feasibility_check_stochastic_multistep(result_ZIL_la,CHECK_result_ZIL_la,CHECK_result_ZIL_la_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
+OPF_CHECK_result_ZIL_la = _SPMTA.run_stochastic_acdc_opf(CHECK_result_ZIL_la_auxiliary,LPACCPowerModel,gurobi; setting = s)
+
+prepare_AC_feasibility_check_stochastic_multistep(result_ZIL_sp,CHECK_result_ZIL_sp,CHECK_result_ZIL_sp_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
+OPF_CHECK_result_ZIL_sp = _SPMTA.run_stochastic_acdc_opf(CHECK_result_ZIL_sp_auxiliary,LPACCPowerModel,gurobi; setting = s)
+
+prepare_AC_feasibility_check_stochastic_multistep(result_ZIL_la,CHECK_result_ZIL_sp_la,CHECK_result_ZIL_sp_la_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
+OPF_CHECK_result_ZIL_sp_la = _SPMTA.run_stochastic_acdc_opf(CHECK_result_ZIL_sp_la_auxiliary,LPACCPowerModel,gurobi; setting = s)
+
+
+opf_forecasted["objective"]*100 - opf_measured["objective"]*100
+OPF_CHECK_result_ZIL["objective"]*100 - opf_measured["objective"]*100
+obj_measured_hourly = sum(bs_measured_hourly["$i"]["objective"] for i in 1:n_hours)
+
+
+
+
+#############################################################################################
+# OFW generators Belgium
+ofw_gen_BE = []
+for (g_id,g) in BE_grid_bs_6010_6033["gen"]
+    if g["type"] == "Offshore Wind" && g["zone"] == "BE00"
+        push!(ofw_gen_BE,g_id)
+    end
+end
+ofw_BE_generation = []
+ofw_BE_max = []
+for nw in 1:n_hours
+    push!(ofw_BE_generation,sum(opf_measured["solution"]["nw"]["$nw"]["gen"][g_id]["pg"] for g_id in ofw_gen_BE))
+    push!(ofw_BE_max,sum(BE_grid_bs_6010_6033["gen"][g_id]["pmax"] for g_id in ofw_gen_BE)*measured[nw])
+end
+plot(ofw_BE_generation,label = "OFW generation")
+plot!(ofw_BE_max,label = "OFW theoretical maximum")
+
+opf_measured["objective"]
+hourly_opf_value_measured = [sum(opf_measured["solution"]["nw"]["$nw"]["gen"][g_id]["pg"]*g["cost"][1]*100 for (g_id,g) in BE_grid_bs_6010_6033["gen"]) for nw in 1:n_hours]
+hourly_opf_value_forecasted = [sum(opf_forecasted["solution"]["nw"]["$nw"]["gen"][g_id]["pg"]*g["cost"][1]*100 for (g_id,g) in BE_grid_bs_6010_6033["gen"]) for nw in 1:n_hours]
+hourly_opf_value_measured_with_forecasted = [sum(result_opf_check_measured_with_forecasted_topology["solution"]["nw"]["$nw"]["gen"][g_id]["pg"]*g["cost"][1]*100 for (g_id,g) in BE_grid_bs_6010_6033["gen"]) for nw in 1:n_hours]
+
+
+function compute_hourly_costs_stochastic_multistep_simulations(grid,result,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,vector)
+    for hour in start_hour_simulation:end_hour_simulation
+        hourly_cost_hour = 0
+        for scenario_idx in 1:n_scenarios
+            hourly_cost_scenario = 0
+            nw = (hour - start_hour_simulation)*n_scenarios + scenario_idx
+            for (g_id,g) in grid["gen"]
+                hourly_cost_scenario += result["solution"]["nw"]["$nw"]["gen"][g_id]["pg"]*g["cost"][1]*100
+            end
+            hourly_cost_hour += hourly_cost_scenario*time_series_hour["scenario_probability"]["$hour"][scenario_idx]
+        end
+        push!(vector,hourly_cost_hour)
+    end
+end
+
+result_hourly_bs
+
+function compute_hourly_costs_stochastic_multistep_simulations_hourly(grid,result,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,vector)
+    for hour in start_hour_simulation:end_hour_simulation
+        hourly_cost_hour = 0
+        for scenario_idx in 1:n_scenarios
+            hourly_cost_scenario = 0
+            nw = (hour - start_hour_simulation)*n_scenarios + scenario_idx
+            for (g_id,g) in grid["gen"]
+                hourly_cost_scenario += result["$(hour+1-start_hour_simulation)"]["solution"]["nw"]["$nw"]["gen"][g_id]["pg"]*g["cost"][1]*100
+            end
+            hourly_cost_hour += hourly_cost_scenario*time_series_hour["scenario_probability"]["$hour"][scenario_idx]
+        end
+        push!(vector,hourly_cost_hour)
+    end
+end
+
+function compute_hourly_costs_stochastic_multistep_simulations_hourly_measured(grid,result,start_hour_simulation,end_hour_simulation,time_series_hour,vector)
+    for hour in start_hour_simulation:end_hour_simulation
+        println("hour: $hour")
+        hourly_cost_hour = 0
+        for scenario_idx in 1:1
+            hourly_cost_scenario = 0
+            for (g_id,g) in grid["gen"]
+                hourly_cost_scenario += result["$(hour - start_hour_simulation+1)"]["solution"]["nw"]["$(hour - start_hour_simulation+1)"]["gen"][g_id]["pg"]*g["cost"][1]*100
+            end
+            hourly_cost_hour += hourly_cost_scenario*time_series_hour["scenario_probability"]["$hour"][scenario_idx]
+        end
+        push!(vector,hourly_cost_hour)
+    end
+end
+
+hourly_ZIL = []
+hourly_ZIL_la = []
+hourly_ZIL_sp = []
+hourly_ZIL_sp_la = []
+hourly_ZIL_hourly = []
+hourly_ZIL_measured_hourly = [bs_measured_hourly["$nw"]["objective"]*100 for nw in 1:n_hours]
+term_status = [bs_measured_hourly["$nw"]["termination_status"] for nw in 1:n_hours]
+term_status = [result_hourly_bs["$nw"]["termination_status"] for nw in 1:n_hours]
+
+compute_hourly_costs_stochastic_multistep_simulations(BE_grid_bs_6010_6033,result_ZIL,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,hourly_ZIL)
+compute_hourly_costs_stochastic_multistep_simulations(BE_grid_bs_6010_6033,result_ZIL_la,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,hourly_ZIL_la)
+compute_hourly_costs_stochastic_multistep_simulations(BE_grid_bs_6010_6033,result_ZIL_sp,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,hourly_ZIL_sp)
+compute_hourly_costs_stochastic_multistep_simulations(BE_grid_bs_6010_6033,result_ZIL_sp_la,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,hourly_ZIL_sp_la)
+compute_hourly_costs_stochastic_multistep_simulations_hourly(BE_grid_bs_6010_6033,result_hourly_bs,start_hour_simulation,end_hour_simulation,time_series_hour,n_scenarios,hourly_ZIL_hourly)
+#compute_hourly_costs_stochastic_multistep_simulations_hourly_measured(BE_grid_bs_6010_6033,bs_measured_hourly,start_hour_simulation,end_hour_simulation,time_series_hour,hourly_ZIL_measured_hourly)
+sum(hourly_ZIL_hourly)
+sum(hourly_ZIL_measured_hourly)
+
+
+rel_hourly_opf_value_measured = (1 .- hourly_opf_value_measured./hourly_opf_value_measured)*100
+rel_hourly_opf_value_measured_with_forecasted = (1 .- hourly_opf_value_measured_with_forecasted./hourly_opf_value_measured)*100
+rel_hourly_ZIL = (1 .- hourly_ZIL./hourly_opf_value_measured)*100
+rel_hourly_ZIL_la = (1 .- hourly_ZIL_la./hourly_opf_value_measured)*100
+rel_hourly_ZIL_sp = (1 .- hourly_ZIL_sp./hourly_opf_value_measured)*100
+rel_hourly_ZIL_sp_la = (1 .- hourly_ZIL_sp_la./hourly_opf_value_measured)*100
+rel_hourly_ZIL_hourly = (1 .- hourly_ZIL_hourly./hourly_opf_value_measured)*100
+
+
+plot(rel_hourly_opf_value_measured,label = "Perfect foresight",
+    ylims = [-1.0,1.5],xticks = 1:24, ylabel = "Cost decrease wrt perfect foresight OPF [%]", 
+    ylabelfontsize = 10,xlabel = "Hour", xlabelfontsize = 10, 
+    legend = :topright, grid = :none)
+plot!(rel_hourly_opf_value_measured_with_forecasted,label = "Day-ahead topology")
+plot!(rel_hourly_ZIL,label = "ZIL")
+plot!(rel_hourly_ZIL_la,label = "ZIL limited actions")
+plot!(rel_hourly_ZIL_sp,label = "ZIL sp")
+plot!(rel_hourly_ZIL_sp_la,label = "ZIL limited actions sp")
+plot!(rel_hourly_ZIL_hourly,label = "ZIL hourly")
+
+result_figures_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Figures"
+savefig(joinpath(result_figures_folder,"Cost_decrease_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).svg")) 
+
+#########################################################################
+# Status of the switches
+first_hours = []
+for hour in start_hour_simulation:end_hour_simulation
+    scenario_idx = 1
+    push!(first_hours,(hour - start_hour_simulation)*n_scenarios + scenario_idx)
+end
+
+sw_status_1_ZIL       = [result_ZIL["solution"]["nw"]["$i"]["switch"]["1"]["status"] for i in first_hours]
+sw_status_1_ZIL_la    = [result_ZIL_la["solution"]["nw"]["$i"]["switch"]["1"]["status"] for i in first_hours]
+sw_status_1_ZIL_sp    = [result_ZIL_sp["solution"]["nw"]["$i"]["switch"]["1"]["status"] for i in first_hours]
+sw_status_1_ZIL_sp_la = [result_ZIL_sp_la["solution"]["nw"]["$i"]["switch"]["1"]["status"] for i in first_hours]
+
+sw_status_2_ZIL       = [result_ZIL["solution"]["nw"]["$i"]["switch"]["2"]["status"] for i in first_hours]
+sw_status_2_ZIL_la    = [result_ZIL_la["solution"]["nw"]["$i"]["switch"]["2"]["status"] for i in first_hours]
+sw_status_2_ZIL_sp    = [result_ZIL_sp["solution"]["nw"]["$i"]["switch"]["2"]["status"] for i in first_hours]
+sw_status_2_ZIL_sp_la = [result_ZIL_sp_la["solution"]["nw"]["$i"]["switch"]["2"]["status"] for i in first_hours]
+
+
+for i in 1:24
+    if sw_status_1_ZIL_la[i] == 0.0
+        sw_status_1_ZIL_la[i] = 0.3
+    end
+    if sw_status_1_ZIL[i] == 0.0
+        sw_status_1_ZIL[i] = 0.1
+    end
+end
+scatter(sw_status_1_ZIL,yticks = :none,xticks = (0:1:24),ylims = (0,1.2),ylabel = "Closed                           Open",label = "Stochastic Multistep")
+scatter!(sw_status_1_ZIL_la,label = "Stochastic Multistep limited actions")
+
+
+

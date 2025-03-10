@@ -25,12 +25,16 @@ function objective_stochastic_opf(pm::_PM.AbstractPowerModel)
         JuMP.add_to_expression!(cost, scenario_probability, calc_gen_cost(pm,n))
     end
     JuMP.@objective(pm.model, Min, cost)
-    #return JuMP.@objective(pm.model, Min,
-    #sum(
-    #    sum( _PM.var(pm, n, :pg_cost, i) for (i,gen) in nw_ref[:gen])
-    #for (n,nw_ref) in _FP.nw_ids(pm)
-    #)
-    #)
+end
+
+function objective_stochastic_opf_hourly(pm::_PM.AbstractPowerModel)
+    cost = JuMP.AffExpr(0.0)
+
+    for (n,network) in pm.ref[:it][_PM.pm_it_sym][:nw]
+        scenario_probability = _PM.ref(pm, n, :probability)
+        JuMP.add_to_expression!(cost, scenario_probability, calc_gen_cost(pm,n))
+    end
+    JuMP.@objective(pm.model, Min, cost)
 end
 
 function objective_stochastic_opf_opf(pm::_PM.AbstractPowerModel)
