@@ -360,17 +360,9 @@ function prepare_starting_value_dict_lpac_nw(result,grid,start_hour_simulation,e
     end
 end
 
-function generate_input_dict_stochastic_optimization(dict,gen_time_series,load_time_series,start_hour_simulation,end_hour_simulation,scenario_data)
-    dict["gen"] = gen_time_series
-    dict["load"] = load_time_series
-    dict["scenario_probability"] = Dict{String,Any}()
-    for i in start_hour_simulation:end_hour_simulation
-        dict["scenario_probability"]["$i"] = deepcopy(scenario_data["$i"]["pdf_normalized"])
-    end
-    return dict
-end
 
-function run_stochastic_acdcsw_AC_ZIL_hourly(grid, model, optimizer, n_hours, n_scenarios,result; setting = s)
+function run_stochastic_acdcsw_AC_ZIL_h(grid, model, optimizer, n_hours, n_scenarios; setting = s)
+    result = Dict{String,Any}()
     for hour in 1:n_hours
         scenarios_hour = collect(((hour-1)*n_scenarios + 1):(hour*n_scenarios))
         grid_hour = deepcopy(grid)
@@ -550,4 +542,152 @@ function prepare_AC_feasibility_check_stochastic_multistep(result_dict, input_di
         input_ac_check["nw"]["$t"]["switch"] = Dict{String,Any}()
         input_ac_check["nw"]["$t"]["switch_couples"] = Dict{String,Any}()
     end
+end
+
+function create_RES_time_series_base(grid,scenario_samples_dict,n_scenarios,start_hour_simulation,end_hour_simulation)
+    count_ = 0
+    res_dict = Dict{String,Any}()
+    for (g_id,g) in grid["gen"]
+        res_dict[g_id] = Dict{String,Any}()
+        for i in start_hour_simulation:end_hour_simulation
+            hour = i - start_hour_simulation + 1
+            res_dict[g_id]["$i"] = Dict{String,Any}()
+            if n_scenarios > 1
+                if haskey(g,"type")
+                    if g["type"] == "Offshore Wind" # Only for wind now
+                        res_dict[g_id]["$i"]["P50_11hforecast_pu"] = scenario_samples_dict["$i"]["P50_11hforecast_pu"]
+                        res_dict[g_id]["$i"]["most_recent_forecast_pu"] = scenario_samples_dict["$i"]["most_recent_forecast_pu"]
+                        res_dict[g_id]["$i"]["measured_pu"] = scenario_samples_dict["$i"]["measured_pu"]
+                        res_dict[g_id]["$i"]["pdf"] = []
+                        res_dict[g_id]["$i"]["samples_pu"] = []
+                        for s in 1:n_scenarios
+                           push!(res_dict[g_id]["$i"]["pdf"],scenario_samples_dict["$i"]["pdf_normalized"][s])
+                           push!(res_dict[g_id]["$i"]["samples_pu"],scenario_samples_dict["$i"]["samples_pu"][s])
+                        end
+                    end
+                else
+                        res_dict[g_id]["$i"]["P50_11hforecast_pu"] = scenario_samples_dict["$i"]["P50_11hforecast_pu"]
+                        res_dict[g_id]["$i"]["most_recent_forecast_pu"] = scenario_samples_dict["$i"]["most_recent_forecast_pu"]
+                        res_dict[g_id]["$i"]["measured_pu"] = scenario_samples_dict["$i"]["measured_pu"]
+                        res_dict[g_id]["$i"]["pdf"] = []
+                        res_dict[g_id]["$i"]["samples_pu"] = []
+                        for s in 1:n_scenarios
+                            push!(res_dict[g_id]["$i"]["pdf"],scenario_samples_dict["$i"]["pdf_normalized"][s])
+                            push!(res_dict[g_id]["$i"]["samples_pu"],1.0)
+                        end
+                end
+            else
+                if haskey(g,"type")
+                    if g["type"] == "Offshore Wind" 
+                        res_dict[g_id]["$i"]["P50_11hforecast_pu"] = scenario_samples_dict["$i"]["P50_11hforecast_pu"]
+                        res_dict[g_id]["$i"]["most_recent_forecast_pu"] = scenario_samples_dict["$i"]["most_recent_forecast_pu"]
+                        res_dict[g_id]["$i"]["measured_pu"] = scenario_samples_dict["$i"]["measured_pu"]
+                        res_dict[g_id]["$i"]["pdf"] = 1.0
+                        res_dict[g_id]["$i"]["samples_pu"] = 1.0
+                    end
+                else
+                        res_dict[g_id]["$i"]["P50_11hforecast_pu"] = scenario_samples_dict["$i"]["P50_11hforecast_pu"]
+                        res_dict[g_id]["$i"]["most_recent_forecast_pu"] = scenario_samples_dict["$i"]["most_recent_forecast_pu"]
+                        res_dict[g_id]["$i"]["measured_pu"] = scenario_samples_dict["$i"]["measured_pu"]
+                        res_dict[g_id]["$i"]["pdf"] = 1.0
+                        res_dict[g_id]["$i"]["samples_pu"] = 1.0
+                    end
+                end
+            end
+        end
+    return res_dict
+end
+
+function create_gen_time_series_base_scenarios(grid, wind_data, start_hour_simulation, end_hour_simulation, n_scenarios)
+    res_dict = Dict{String,Any}()
+    for (g_id,g) in grid["gen"]
+        res_dict[g_id] = Dict{String,Any}()
+        for i in start_hour_simulation:end_hour_simulation
+            res_dict[g_id]["$i"] = Dict{String,Any}()
+            for scenario_idx in 1:n_scenarios
+                res_dict[g_id]["$i"]["$scenario_idx"] = Dict{String,Any}()
+                if haskey(g,"type")
+                    if g["type"] == "Offshore Wind" 
+                        res_dict[g_id]["$i"]["$scenario_idx"]["capacity_factor"] = wind_data["$i"]["samples_pu"][scenario_idx]
+                    end
+                else
+                    res_dict[g_id]["$i"]["$scenario_idx"]["capacity_factor"] = 1.0
+                end
+            end
+        end
+    end
+    return res_dict
+end
+
+function add_load_time_series_base_scenario(grid, grid_load, start_hour_simulation, end_hour_simulation, n_scenarios)
+    load_dict = Dict{String,Any}()
+    for (l_id,l) in grid["load"]
+        load_dict[l_id] = Dict{String,Any}()
+        for h in start_hour_simulation:end_hour_simulation
+            load_dict[l_id]["$h"] = Dict{String,Any}()
+            for scenario in 1:n_scenarios 
+                load_dict[l_id]["$h"]["$scenario"] = Dict{String,Any}()
+                load_dict[l_id]["$h"]["$scenario"]["pd"] = grid_load["load"][l_id]["pd"]
+            end 
+        end
+    end
+    return load_dict
+end
+
+function generate_input_dict_stochastic_optimization(gen_time_series,res_time_series,load_time_series,start_hour_simulation,end_hour_simulation,scenario_data)
+    dict = Dict{String,Any}()
+    dict["gen"] = gen_time_series
+    dict["res"] = res_time_series
+    dict["load"] = load_time_series
+    dict["scenario_probability"] = Dict{String,Any}()
+    for i in start_hour_simulation:end_hour_simulation
+        dict["scenario_probability"]["$i"] = deepcopy(scenario_data["$i"]["pdf_normalized"])
+    end
+    return dict
+end
+
+function add_hour_scenario_probability_scenario_base(data,hour,index,scenario_idx,time_series,start_hour_simulation)
+    nw_hour = hour - start_hour_simulation + 1
+    data["nw"]["$index"]["hour"] = nw_hour
+    data["nw"]["$index"]["hour_original"] = hour
+    data["nw"]["$index"]["scenario"] = scenario_idx
+    data["nw"]["$index"]["hour_scenario_index"] = [nw_hour,scenario_idx]
+    data["nw"]["$index"]["probability"] = time_series["scenario_probability"]["$hour"][scenario_idx]
+end
+
+function fix_hourly_load_nw_base(grid,hour,load_time_series,scenario_idx) 
+    for (l_id,l) in grid["load"]
+            l["pd"] = deepcopy(load_time_series["load"][l_id]["$hour"]["$scenario_idx"]["pd"]) #pu
+            l["qd"] = deepcopy(l["pd"]/20) #pu
+    end   
+end
+
+function fix_gen_time_series_nw_base(grid,hour,res_time_series,scenario_idx)
+    for (g_id,g) in grid["gen"]
+        g["pmax"] = g["pmax"]*res_time_series["gen"][g_id]["$hour"]["$scenario_idx"]["capacity_factor"] #pu
+    end
+end
+
+function make_multinetwork_time_series_base_scenarios(
+    sn_data::Dict{String,Any},n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series;
+    global_keys = ["hours","scenarios","name","per_unit","source_type","source_version"],
+    check_dim::Bool = true,
+    )
+
+    mn_data = Dict{String,Any}("nw"=>Dict{String,Any}())
+    _FP._add_mn_global_values!(mn_data, sn_data, global_keys)
+    #template_nw = _make_template_nw(sn_data, global_keys)
+    for hour in start_hour_simulation:end_hour_simulation
+        nw_hour = hour - start_hour_simulation + 1
+        for scenario_idx in 1:n_scenarios
+            n = (nw_hour - 1)*n_scenarios + scenario_idx
+            mn_data["nw"]["$n"] = deepcopy(sn_data)#_build_nw(template_nw, sn_data, time_series_idx; share_data = true)
+            add_hour_scenario_probability_scenario_base(mn_data,hour,n,scenario_idx,time_series,start_hour_simulation)
+            fix_hourly_load_nw_base(mn_data["nw"]["$n"],hour,time_series,scenario_idx) 
+            fix_gen_time_series_nw_base(mn_data["nw"]["$n"],hour,time_series,scenario_idx)
+        end
+    end
+    mn_data["scenarios"] = n_scenarios
+    mn_data["hours"] = n_hours
+    return mn_data
 end

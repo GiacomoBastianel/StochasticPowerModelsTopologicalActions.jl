@@ -63,4 +63,41 @@ function build_stochastic_acdc_opf(pm::_PM.AbstractPowerModel)
 
 end
 
-### Functions calling all the scenarios within one hour STILL TO BE IMPLENTED
+function run_stochastic_ac_opf(file, model_constructor, optimizer; kwargs...)
+    #_FP.require_dim(file, :hour, :scenario)
+    return _PM.solve_model(file, model_constructor, optimizer, build_stochastic_ac_opf; 
+    ref_extensions=[_PMACDC.add_ref_dcgrid!,_PM.ref_add_on_off_va_bounds!], 
+    multinetwork = true,
+    kwargs...)
+end
+
+""
+function build_stochastic_ac_opf(pm::_PM.AbstractPowerModel)
+    for n in 1:length(pm.ref[:it][_PM.pm_it_sym][:nw])
+        _PM.variable_bus_voltage(pm; nw = n)
+        _PM.variable_gen_power(pm; nw = n)
+        _PM.variable_branch_power(pm; nw = n)
+
+
+        _PM.constraint_model_voltage(pm; nw = n)
+
+        for i in _PM.ids(pm, n, :ref_buses)
+            _PM.constraint_theta_ref(pm, i; nw = n)
+        end
+
+        for i in _PM.ids(pm, n, :bus)
+            _PM.constraint_power_balance(pm, i; nw = n)
+        end
+
+        for i in _PM.ids(pm, n, :branch)
+            _PM.constraint_ohms_yt_from(pm, i; nw = n)
+            _PM.constraint_ohms_yt_to(pm, i; nw = n)
+            _PM.constraint_voltage_angle_difference(pm, i; nw = n) #angle difference across transformer and reactor - useful for LPAC if available?
+            _PM.constraint_thermal_limit_from(pm, i; nw = n)
+            _PM.constraint_thermal_limit_to(pm, i; nw = n)
+        end
+    end
+    # Objective function
+    objective_stochastic_opf(pm)
+
+end

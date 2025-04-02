@@ -167,15 +167,6 @@ function compute_diff_vms_single_hour(dict,grid,results)
     end
 end
 
-function print_switch_results(result, grid)
-    for i in 1:length(grid["switch"])
-        if !haskey(grid["switch"]["$i"],"auxiliary")
-            println(i," f_bus ",grid["switch"]["$i"]["f_bus"]," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"])
-        else
-            println(i," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["1"]["switch"]["$i"]["status"]," auxiliary ", grid["switch"]["$i"]["auxiliary"], " original ", grid["switch"]["$i"]["original"])
-        end
-    end
-end
 
 function AC_lines_utilization(grid,results,dict)
     for (br_id,br) in grid["branch"]
@@ -196,3 +187,5 @@ function AC_lines_utilization(grid,results,dict)
     end
     return dict
 end
+
+ 

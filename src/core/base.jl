@@ -112,21 +112,4 @@ function add_ZIL_stochastic_multitemporal_constraints!(ref::Dict{Symbol,<:Any}, 
     hours = ref[:it][:pm][:hours]
     scenarios = ref[:it][:pm][:scenarios]
     
-    scenario_idx = 1 # calling the first scenario
-    first_hours = []
-    for hour in 1:hours
-        push!(first_hours,(hour - 1)*scenarios + scenario_idx)
-    end
-    ac_ZIL = []
-    for hour in first_hours
-        if haskey(ref[:it][:pm][:nw][hour],:switch)
-            for (sw_id,sw) in ref[:it][:pm][:nw][hour][:switch]
-                if !haskey(sw, "auxiliary")
-                    push!(ac_ZIL,(sw_id,hour))
-                end
-            end
-        end
-    end
-    ref[:it][:pm][:ac_ZIL] = ac_ZIL
-    println(ac_ZIL)
 end

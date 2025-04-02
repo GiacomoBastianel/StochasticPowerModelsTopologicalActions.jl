@@ -56,30 +56,30 @@ function objective_stochastic_opf_opf(pm::_PM.AbstractPowerModel)
     #)
 end
 
-function objective_stochastic_ac_switch(pm::_PM.AbstractPowerModel)
+function objective_multistep_ac_switch(pm::_PM.AbstractPowerModel)
     cost = JuMP.AffExpr(0.0)
 
     # Operation cost
     #if multi_period
         # multiperiod formulation to be added
     #else
-        for (s, scenario) in _FP.dim_prop(pm, :scenario)
-            println("s: ", s)
-            println("scenario: ", scenario)
-            scenario_probability = scenario["probability"]
-            for n in _FP.nw_ids(pm; scenario=s)
-                JuMP.add_to_expression!(cost, scenario_probability, calc_gen_cost(pm,n))
-                JuMP.add_to_expression!(cost, scenario_probability, calc_ac_switch_cost(pm,n))
-                #JuMP.add_to_expression!(cost, scenario_probability, calc_gen_cost(pm,n))
-            end
+        for nw_id in 1:length(pm.ref[:it][:pm][:nw])
+            println("s: ", "$nw_id")
+            nw = pm.ref[:it][:pm][:nw][nw_id]
+            scenario_probability = nw[:probability]
+            println("scenario_probability: ", scenario_probability)
+            println(typeof(nw_id), " ")
+            JuMP.add_to_expression!(cost, scenario_probability, calc_gen_cost(pm,nw_id))
+            JuMP.add_to_expression!(cost, scenario_probability, calc_ac_switch_cost(pm,nw_id))
         end
     #end
     JuMP.@objective(pm.model, Min, cost)
 end
 
 function calc_gen_cost(pm::_PM.AbstractPowerModel, n::Int)
+    println("n: ", n)
     cost = JuMP.AffExpr(0.0)
-    for (i,g) in _PM.ref(pm, n, :gen)
+    for (i,g) in pm.ref[:it][:pm][:nw][n][:gen]
         if length(g["cost"]) ≥ 2
             JuMP.add_to_expression!(cost, g["cost"][end-1], _PM.var(pm,n,:pg,i))
         end
@@ -87,10 +87,12 @@ function calc_gen_cost(pm::_PM.AbstractPowerModel, n::Int)
     return cost
 end
 
-function calc_ac_switch_cost(pm::_PM.AbstractPowerModel, n::Int)
+function calc_ac_switch_cost(pm::_PM.AbstractPowerModel,n::Int)
     cost = JuMP.AffExpr(0.0)
-    for (sw_id,sw) in _PM.ref(pm, n, :switch)
-        JuMP.add_to_expression!(cost, sw["cost"], (1 - _PM.var(pm,n,:z_switch,sw_id)))
+    for (sw_id,sw) in pm.ref[:it][:pm][:nw][n][:switch]
+        if !haskey(sw,"auxiliary")
+            JuMP.add_to_expression!(cost, sw["cost"], (1 - _PM.var(pm,n,:z_switch,sw_id)))
+        end
     end
     return cost
 end

@@ -89,6 +89,87 @@ s_dual = Dict("output" => Dict("branch_flows" => true,"duals" => true), "conv_lo
 _SPMTA.add_dimensions!(BE_grid_bs_6010_6033,n_scenarios,n_hours)
 _SPMTA.add_dimensions!(BE_grid_opf_6010_6033,n_scenarios,n_hours)
 
+_SPMTA.add_hour_scenario_data(BE_grid_bs_6010_6033, n_hours, n_scenarios)
+_SPMTA.add_hour_scenario_data(BE_grid_opf_6010_6033, n_hours, n_scenarios)
+
+BE_grid_bs_mn_6010_6033 = _SPMTA.make_multinetwork_time_series_tyndp_scenarios(BE_grid_bs_6010_6033,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones)
+BE_grid_opf_mn_6010_6033 = _SPMTA.make_multinetwork_time_series_tyndp_scenarios(BE_grid_opf_6010_6033,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones)
+
+result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
+result_ac_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,ACPPowerModel,ipopt; setting = s)
+
+#########################################################################################
+function make_multinetwork_time_series_opf_check(
+    sn_data::Dict{String,Any},n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series,zones,wind_values;
+    global_keys = ["hours","scenarios","name","per_unit","source_type","source_version"],
+    check_dim::Bool = true,
+    )
+
+    mn_data = Dict{String,Any}("nw"=>Dict{String,Any}())
+    _FP._add_mn_global_values!(mn_data, sn_data, global_keys)
+    #template_nw = _make_template_nw(sn_data, global_keys)
+    for hour in start_hour_simulation:end_hour_simulation
+        scenario_idx = 1
+        nw_hour = hour - start_hour_simulation + 1
+        mn_data["nw"]["$nw_hour"] = deepcopy(sn_data)
+        add_hour_opf_check(mn_data,hour,nw_hour,scenario_idx,time_series,start_hour_simulation)
+        fix_hourly_load_nw(mn_data["nw"]["$nw_hour"],hour,zones,time_series,scenario_idx) 
+        fix_gen_time_series_nw(mn_data["nw"]["$nw_hour"],hour,zones,time_series,scenario_idx)
+        add_OFW_time_series(mn_data["nw"]["$nw_hour"],nw_hour,zones,wind_values) # this is just to check if it works, to be modified
+    end
+    mn_data["scenarios"] = n_scenarios
+    mn_data["hours"] = n_hours
+    return mn_data
+end
+
+function add_hour_opf_check(data,hour,index,scenario_idx,time_series,start_hour_simulation)
+    nw_hour = hour - start_hour_simulation + 1
+    data["nw"]["$index"]["hour"] = nw_hour
+    data["nw"]["$index"]["hour_original"] = hour
+    data["nw"]["$index"]["scenario"] = scenario_idx
+    data["nw"]["$index"]["hour_scenario_index"] = [nw_hour,scenario_idx]
+    data["nw"]["$index"]["probability"] = 1.0
+end
+
+function fix_hourly_load_nw(grid,hour,zones,load_time_series,scenario_idx) 
+    for zone in zones
+        for (l_id,l) in grid["load"]
+            if l["zone"] == zone
+                l["pd"] = deepcopy(load_time_series["load"][l_id]["$hour"]["$scenario_idx"]["pd"]) #pu
+                l["qd"] = deepcopy(l["pd"]/20) #pu
+            end
+        end   
+    end
+end
+
+function fix_gen_time_series_nw(grid,hour,zones,res_time_series,scenario_idx)
+    for zone in zones
+        for (g_id,g) in grid["gen"]
+            g["pmax"] = g["installed_capacity"]*res_time_series["gen"][g_id]["$hour"]["$scenario_idx"]["capacity_factor"] #pu
+        end
+    end
+end
+
+function add_OFW_time_series(grid,hour,zones,wind_values)
+    for zone in zones
+        for (g_id,g) in grid["gen"]
+            if g["type"] == "Offshore Wind" && g["zone"] == "BE00"
+                g["pmax"] = g["installed_capacity"]*wind_values[hour] #pu
+            end
+        end
+    end
+end
+
+BE_grid_bs_6010_6033_measured = deepcopy(BE_grid_bs_6010_6033)
+BE_grid_opf_6010_6033_measured = deepcopy(BE_grid_opf_6010_6033)
+BE_grid_bs_6010_6033_forecasted = deepcopy(BE_grid_bs_6010_6033)
+BE_grid_opf_6010_6033_forecasted = deepcopy(BE_grid_opf_6010_6033)
+
+BE_grid_bs_mn_6010_6033_measured    = make_multinetwork_time_series_opf_check(BE_grid_bs_6010_6033_measured,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones,measured)
+BE_grid_opf_mn_6010_6033_measured   = make_multinetwork_time_series_opf_check(BE_grid_opf_6010_6033_measured,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones,measured)
+BE_grid_bs_mn_6010_6033_forecasted  = make_multinetwork_time_series_opf_check(BE_grid_bs_6010_6033_measured,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones,p_50_forecast)
+BE_grid_opf_mn_6010_6033_forecasted = make_multinetwork_time_series_opf_check(BE_grid_opf_6010_6033_measured,n_hours,n_scenarios,start_hour_simulation,end_hour_simulation,time_series_hour,zones,p_50_forecast)
+
 #########################################################################################
 # Calling scenario and climate year
 scenario = "DE"
@@ -131,7 +212,6 @@ BE_grid_opf_mn_6010_6033 = _SPMTA.make_multinetwork_time_series_tyndp_scenarios(
 
 result_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,LPACCPowerModel,gurobi; setting = s)
 #result_ac_opf = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033,ACPPowerModel,ipopt; setting = s)
-
 
 result_ZIL = JSON.parsefile(joinpath(folder_results,"Results_ZIL_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
 result_ZIL_sp = JSON.parsefile(joinpath(folder_results,"Results_ZIL_sp_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).json"))
@@ -328,9 +408,16 @@ function prepare_AC_feasibility_check_stochastic_multistep(result_dict, input_di
     end
 end
 
-installed_capacity_1020 = [BE_grid_bs_mn_6010_6033_measured["nw"]["$i"]["gen"]["1020"]["installed_capacity"] for i in 1:n_hours]
-pmax_1020 = [BE_grid_bs_mn_6010_6033_measured["nw"]["$i"]["gen"]["1020"]["pmax"] for i in 1:n_hours]
-measured
+function run_stochastic_acdcsw_AC_ZIL_hourly_measured(grid, model, optimizer, n_hours,result; setting = s)
+    for hour in 1:n_hours
+        grid_hour = deepcopy(grid)
+        grid_hour["hours"] = 1
+        grid_hour["nw"]= Dict{String,Any}()
+        grid_hour["nw"]["$hour"] = deepcopy(grid["nw"]["$hour"])  
+        result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly(grid_hour,model,optimizer; setting = setting)
+    end
+    return result
+end
 
 bs_measured_hourly = Dict{String,Any}()
 run_stochastic_acdcsw_AC_ZIL_hourly_measured(BE_grid_bs_mn_6010_6033_measured,LPACCPowerModel,gurobi,n_hours,bs_measured_hourly; setting = s)
@@ -349,14 +436,13 @@ open(joinpath(folder_results,"Results_bs_measured_hourly_$(n_hours)_$(start_hour
 end
 
 bs_ZIL_hourly = Dict{String,Any}()
-run_stochastic_acdcsw_AC_ZIL_hourly_(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi,n_hours,bs_measured_hourly; setting = s)
+run_stochastic_acdcsw_AC_ZIL_hourly(BE_grid_bs_mn_6010_6033,LPACCPowerModel,gurobi,n_hours,bs_measured_hourly; setting = s)
 sum(bs_ZIL_hourly["$i"]["objective"] for i in 1:n_hours)
 
 
 
 result_opf_measured = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033_measured,LPACCPowerModel,gurobi; setting = s)
 result_opf_forecasted = _SPMTA.run_stochastic_acdc_opf(BE_grid_opf_mn_6010_6033_forecasted,LPACCPowerModel,gurobi; setting = s)
-bs_forecasted_hourly
 
 CHECK_result_ZIL   = deepcopy(BE_grid_bs_mn_6010_6033_measured)
 CHECK_result_ZIL_auxiliary   = deepcopy(BE_grid_bs_mn_6010_6033_measured)
@@ -379,9 +465,6 @@ OPF_CHECK_result_ZIL = _SPMTA.run_stochastic_acdc_opf(CHECK_result_ZIL_auxiliary
 
 prepare_AC_feasibility_check_stochastic_multistep(result_ZIL_sp,CHECK_result_ZIL_sp,CHECK_result_ZIL_sp_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
 OPF_CHECK_result_ZIL_sp = _SPMTA.run_stochastic_acdc_opf(CHECK_result_ZIL_sp_auxiliary,LPACCPowerModel,gurobi; setting = s)
-
-prepare_AC_feasibility_check_stochastic_multistep(bs_measured_hourly,CHECK_result_bs_measured,CHECK_result_bs_measured_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
-OPF_CHECK_result_measured = _SPMTA.run_stochastic_acdc_opf(CHECK_result_bs_measured_auxiliary,LPACCPowerModel,gurobi; setting = s)
 
 prepare_AC_feasibility_check_stochastic_multistep(bs_forecasted,CHECK_result_bs_forecast,CHECK_result_bs_forecast_auxiliary,switches_couples_ac_6010_6033, extremes_ZILs_ac_6010_6033,BE_grid_6010_6033,n_hours,1)
 OPF_CHECK_result_forecast = _SPMTA.run_stochastic_acdc_opf(CHECK_result_bs_forecast_auxiliary,LPACCPowerModel,gurobi; setting = s)
@@ -591,9 +674,6 @@ compute_hourly_costs_stochastic_multistep_simulations_check_hourly(BE_grid_6010_
 compute_hourly_costs_stochastic_multistep_simulations_check(BE_grid_6010_6033,       OPF_CHECK_result_forecast,start_hour_simulation,end_hour_simulation,hourly_ZIL_forecasted)
 compute_hourly_costs_stochastic_multistep_simulations_check(BE_grid_6010_6033,       result_opf_measured,      start_hour_simulation,end_hour_simulation,hourly_ZIL_opf_measured)
 
-sum(hourly_ZIL)
-OPF_CHECK_result_ZIL["objective"]*100
-
 
 rel_hourly_ZIL = (hourly_ZIL./hourly_ZIL_measured)
 for i in 1:length(rel_hourly_ZIL)
@@ -619,18 +699,33 @@ for i in 1:length(rel_hourly_ZIL_opf_measured)
         rel_hourly_ZIL_opf_measured[i] = 1
     end
 end
-rel_hourly_ZIL_percentage = rel_hourly_ZIL .- 1
-rel_hourly_ZIL_measured_percentage = rel_hourly_ZIL_measured .- 1
-rel_hourly_ZIL_forecasted_percentage = rel_hourly_ZIL_forecasted .- 1
+rel_hourly_ZIL_percentage              = rel_hourly_ZIL              .- 1
+rel_hourly_ZIL_measured_percentage     = rel_hourly_ZIL_measured     .- 1
+rel_hourly_ZIL_forecasted_percentage   = rel_hourly_ZIL_forecasted   .- 1
 rel_hourly_ZIL_opf_measured_percentage = rel_hourly_ZIL_opf_measured .- 1
 
+sum(rel_hourly_ZIL_percentage             )
+sum(rel_hourly_ZIL_measured_percentage    )
+sum(rel_hourly_ZIL_forecasted_percentage  )
+sum(rel_hourly_ZIL_opf_measured_percentage)
+
+abs_diff_ZIL_percentage              = rel_hourly_ZIL.*hourly_ZIL_measured*100
+abs_diff_ZIL_measured_percentage     = rel_hourly_ZIL_measured.*hourly_ZIL_measured*100
+abs_diff_ZIL_forecasted_percentage   = rel_hourly_ZIL_forecasted.*hourly_ZIL_measured*100
+abs_diff_ZIL_opf_measured_percentage = rel_hourly_ZIL_opf_measured.*hourly_ZIL_measured*100
+
+sum(abs_diff_ZIL_percentage             )/sum(abs_diff_ZIL_measured_percentage    )
+sum(abs_diff_ZIL_measured_percentage    )/sum(abs_diff_ZIL_measured_percentage    )
+sum(abs_diff_ZIL_forecasted_percentage  )/sum(abs_diff_ZIL_measured_percentage    )
+sum(abs_diff_ZIL_opf_measured_percentage)/sum(abs_diff_ZIL_measured_percentage    )
+
 plot(rel_hourly_ZIL_measured_percentage,label = "Perfect foresight, busbar splitting",
-    ylims = [-0.005,0.02],xticks = 1:24, xtickfontsize = 7, ylabel = "Hourly cost increase wrt perfect foresight busbar splitting [%]", 
-    ylabelfontsize = 8,xlabel = "Hour", xlabelfontsize = 8, yticks = 0:0.005:0.02, #title = "Hourly cost increase wrt perfect foresight busbar splitting",
+    ylims = (-0.1,1),xticks = 1:24, xtickfontsize = 7, ylabel = "Hourly cost increase wrt perfect foresight busbar splitting [%]", 
+    ylabelfontsize = 8,xlabel = "Hour", xlabelfontsize = 8, yticks = 0:0.2:1.0, #title = "Hourly cost increase wrt perfect foresight busbar splitting",
     legend = :topright, grid = :none)
-plot!(rel_hourly_ZIL_percentage,label = "Scenario-based approach")
-plot!(rel_hourly_ZIL_forecasted_percentage,label = "Day-ahead topology")
-plot!(rel_hourly_ZIL_opf_measured_percentage,label = "Perfect foresight, OPF")
+plot!(rel_hourly_ZIL_percentage*100,label = "Scenario-based approach")
+plot!(rel_hourly_ZIL_forecasted_percentage*100,label = "Day-ahead topology")
+plot!(rel_hourly_ZIL_opf_measured_percentage*100,label = "Perfect foresight, OPF")
 
 result_figures_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Figures"
 savefig(joinpath(result_figures_folder,"Cost_increase_percentage_$(n_hours)_$(start_hour_simulation)_$(end_hour_simulation)_$(scenario)$(year)_$(climate_year).svg")) 

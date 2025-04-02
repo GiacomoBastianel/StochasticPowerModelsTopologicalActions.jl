@@ -139,3 +139,23 @@ function add_hour_scenario_probability(data,hour,scenario,index,time_series)
     data["nw"]["$index"]["hour_scenario_index"] = [hour,scenario,index]
     data["nw"]["$index"]["probability"] = time_series["scenario_probability"]["$index"]
 end
+
+function add_VOLL_generators(data)
+    first_l = maximum(parse.(Int, keys(data["gen"])))
+    count = 0
+    for (b_id,b) in data["bus"]
+        count += 1
+        l = first_l + count
+        data["gen"]["$l"] = deepcopy(data["gen"]["1"])
+        #data["gen"]["$l"]["installed_capacity"] = 99.99
+        data["gen"]["$l"]["gen_bus"] = parse(Int64,b_id) 
+        data["gen"]["$l"]["pmax"] = 99.99
+        #data["gen"]["$l"]["mbase"] = 9999
+        data["gen"]["$l"]["source_id"][2] = deepcopy(l)
+        #data["gen"]["$l"]["gen_type"] = "VOLL"
+        data["gen"]["$l"]["index"] = l 
+        #data["gen"]["$l"]["type"] = "VOLL"
+        data["gen"]["$l"]["cost"][1] = 10000
+    end
+end
+
