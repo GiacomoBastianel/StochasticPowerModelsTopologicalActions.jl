@@ -478,3 +478,17 @@ function compute_gen_capacity_hourly_zone(data,results,start_hour,end_hour,zones
         end
     end
 end
+
+
+function print_switch_results(test_case,original_test_case,results)
+    for sw_id in 1:length(test_case["switch"])
+        if haskey(test_case["switch"]["$(sw_id)"],"auxiliary")
+            println("Switch $sw_id, aux is $(test_case["switch"]["$(sw_id)"]["auxiliary"]), orig is $(test_case["switch"]["$(sw_id)"]["original"]), t_bus is $(test_case["switch"]["$(sw_id)"]["t_bus"]), $(results["solution"]["switch"]["$sw_id"]["status"]), bus_split is $(test_case["switch"]["$(sw_id)"]["bus_split"])")    
+            if test_case["switch"]["$(sw_id)"]["auxiliary"] == "branch"
+                println("      Branch $(test_case["switch"]["$(sw_id)"]["original"]), f_bus $(original_test_case["branch"]["$(test_case["switch"]["$(sw_id)"]["original"])"]["f_bus"]), t_bus $(original_test_case["branch"]["$(test_case["switch"]["$(sw_id)"]["original"])"]["t_bus"])")
+            end
+        else
+            println("Switch $sw_id,  is $(results["solution"]["switch"]["$sw_id"]["status"]), bus_split is $(test_case["switch"]["$(sw_id)"]["bus_split"])")
+        end
+    end
+end

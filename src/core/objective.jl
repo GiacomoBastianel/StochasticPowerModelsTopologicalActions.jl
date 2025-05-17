@@ -46,7 +46,6 @@ function objective_stochastic_opf_opf(pm::_PM.AbstractPowerModel)
     end
     opf_result = pm.ref[:it][_PM.pm_it_sym][:opf_result]
     JuMP.add_to_expression!(cost, 1.0, opf_result)
-    println("DIO BOIAAAAAAAAA")
     JuMP.@objective(pm.model, Min, cost)
     #return JuMP.@objective(pm.model, Min,
     #sum(
