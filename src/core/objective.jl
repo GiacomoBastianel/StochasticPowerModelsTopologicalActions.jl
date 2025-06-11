@@ -86,6 +86,18 @@ function calc_gen_cost(pm::_PM.AbstractPowerModel, n::Int)
     return cost
 end
 
+function calc_gen_redispatch_cost(pm::_PM.AbstractPowerModel, n::Int)
+    println("n: ", n)
+    cost = JuMP.AffExpr(0.0)
+    for (i,g) in pm.ref[:it][:pm][n][:gen]
+        if length(g["cost"]) ≥ 2
+            JuMP.add_to_expression!(cost, g["redispatch_cost_up"], _PM.var(pm,n,:pg_up,i) - pm.ref[:it][:pm][:nw][n][:gen][i]["pg_start"])
+            JuMP.add_to_expression!(cost, g["redispatch_cost_down"], pm.ref[:it][:pm][:nw][n][:gen][i]["pg_start"] - _PM.var(pm,n,:pg_down,i))
+        end
+    end
+    return cost
+end
+
 function calc_ac_switch_cost(pm::_PM.AbstractPowerModel,n::Int)
     cost = JuMP.AffExpr(0.0)
     for (sw_id,sw) in pm.ref[:it][:pm][:nw][n][:switch]
@@ -103,3 +115,25 @@ function calc_dc_switch_cost(pm::_PM.AbstractPowerModel, n::Int)
     end
     return cost
 end
+
+function objective_stochastic_redispatch_opf(pm::_PM.AbstractPowerModel)
+    cost = JuMP.AffExpr(0.0)
+
+    #for n in 1:length(pm.ref[:it][_PM.pm_it_sym][:nw])
+        JuMP.add_to_expression!(cost, calc_gen_redispatch_cost(pm))
+    #end
+    JuMP.@objective(pm.model, Min, cost)
+end
+
+
+function calc_gen_redispatch_cost(pm::_PM.AbstractPowerModel)
+    cost = JuMP.AffExpr(0.0)
+    for (i,g) in pm.ref[:it][:pm][:nw][_PM.nw_id_default][:gen]
+        JuMP.add_to_expression!(cost, g["redispatch_cost_up"], _PM.var(pm,:pg_up,i))# - pm.ref[:it][:pm][:nw][_PM.nw_id_default][:gen][i]["pg_start"]))
+        JuMP.add_to_expression!(cost, g["redispatch_cost_down"], _PM.var(pm,:pg_down,i))#-(pm.ref[:it][:pm][:nw][_PM.nw_id_default][:gen][i]["pg_start"]))
+        #JuMP.add_to_expression!(cost, g["redispatch_cost_up"], _PM.var(pm,:qg_up,i))# - pm.ref[:it][:pm][:nw][_PM.nw_id_default][:gen][i]["qg_start"]))
+        #JuMP.add_to_expression!(cost, g["redispatch_cost_down"], _PM.var(pm,:qg_down,i))# -(pm.ref[:it][:pm][:nw][_PM.nw_id_default][:gen][i]["qg_start"] - _PM.var(pm,:qg_down,i)))
+    end
+    return cost
+end
+

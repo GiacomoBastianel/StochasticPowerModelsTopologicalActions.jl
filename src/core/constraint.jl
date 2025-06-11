@@ -301,3 +301,18 @@ function constraint_equalling_all_switching_actions_in_one_hour_stochastic(pm::_
         end
     end
 end
+
+function constraint_power_balance_ac_redispatch(pm::_PM.AbstractPowerModel, n::Int,  i::Int, bus_arcs, bus_arcs_dc, bus_gens, bus_convs_ac, bus_loads, bus_shunts, pd, qd, gs, bs, pg_start, qg_start)
+    vm = _PM.var(pm, n,  :vm, i)
+    p = _PM.var(pm, n,  :p)
+    q = _PM.var(pm, n,  :q)
+    pg_up = _PM.var(pm, n,  :pg_up)
+    qg_up = _PM.var(pm, n,  :qg_up)
+    pg_down = _PM.var(pm, n,  :pg_down)
+    qg_down = _PM.var(pm, n,  :qg_down)
+    pconv_grid_ac = _PM.var(pm, n,  :pconv_tf_fr)
+    qconv_grid_ac = _PM.var(pm, n,  :qconv_tf_fr)
+
+    cstr_p = JuMP.@constraint(pm.model, sum(p[a] for a in bus_arcs) + sum(pconv_grid_ac[c] for c in bus_convs_ac)  == sum(pg_start[g] for g in bus_gens) + sum(pg_up[g] for g in bus_gens) - sum(pg_down[g] for g in bus_gens) - sum(pd[d] for d in bus_loads) - sum(gs[s] for s in bus_shunts)*vm^2)
+    cstr_q = JuMP.@constraint(pm.model, sum(q[a] for a in bus_arcs) + sum(qconv_grid_ac[c] for c in bus_convs_ac)  == sum(qg_start[g] for g in bus_gens) + sum(qg_up[g] for g in bus_gens) - sum(qg_down[g] for g in bus_gens) - sum(qd[d] for d in bus_loads) + sum(bs[s] for s in bus_shunts)*vm^2)
+end

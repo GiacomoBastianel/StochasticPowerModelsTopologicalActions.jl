@@ -9,7 +9,7 @@ using Statistics
 
 mip_gap = 1e-3
 gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 5400,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2) 
-gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1800,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
+gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1800,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-6,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
 gurobi_opf = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>3) 
 gurobi_lpac = JuMP.optimizer_with_attributes(Gurobi.Optimizer)#,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2)
 ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
@@ -26,12 +26,37 @@ input_folder = dirname(dirname(dirname(@__DIR__)))
 test_case_file = joinpath(input_folder,"data_sources/pglib_opf_case30_ieee.m")
 original_grid = _PM.parse_file(test_case_file)
 
-results_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Results"
+results_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Results"
+results_folder_figures = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Figures"
 case = "case_30/stochastic_multistep"
+case_figures = "case_30"
 
 test_case = _PM.parse_file(test_case_file)
-
 test_case_opf = deepcopy(test_case)
+
+# THIS IS APPARENTLY FUNDAMENTAL TO GUARANTEE FEASIBILITY
+function add_VOLL_generators(data)
+    first_l = maximum(parse.(Int, keys(data["gen"])))
+    count = 0
+    for (b_id,b) in data["bus"]
+        count += 1
+        l = first_l + count
+        data["gen"]["$l"] = deepcopy(data["gen"]["1"])
+        #data["gen"]["$l"]["installed_capacity"] = 99.99
+        data["gen"]["$l"]["gen_bus"] = parse(Int64,b_id) 
+        data["gen"]["$l"]["pmax"] = 99.99
+        #data["gen"]["$l"]["mbase"] = 9999
+        data["gen"]["$l"]["source_id"][2] = deepcopy(l)
+        #data["gen"]["$l"]["gen_type"] = "VOLL"
+        data["gen"]["$l"]["index"] = l 
+        #data["gen"]["$l"]["type"] = "VOLL"
+        data["gen"]["$l"]["cost"][1] = 10000
+    end
+end
+add_VOLL_generators(test_case_opf)
+add_VOLL_generators(test_case)
+
+
 opf_30 = _PM.solve_opf(test_case_opf, LPACCPowerModel, ipopt)
 
 #########################################################################################
@@ -45,6 +70,12 @@ for sw_id in 1:length(extremes_ZILs_ac)
     test_case_bs["switch"]["$sw_id"]["cost"] = 10.0
 end
 
+for (g_id,g) in test_case_bs["gen"]
+    println(g_id,g["cost"])
+end
+
+
+
 result_bs_6 = _PMTP.run_acdcsw_AC_big_M_hour(test_case_bs, LPACCPowerModel, gurobi)
 result_bs_6_no_cost = _PMTP.run_acdcsw_AC_big_M(test_case_bs, LPACCPowerModel, gurobi)
 
@@ -56,15 +87,6 @@ result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,LPACCPowerModel
 
 
 #########################################################################################
-# Hours
-n_hours = 1
-start_hour_simulation = 1
-end_hour_simulation = 1
-hours = collect(start_hour_simulation:end_hour_simulation)
-n_scenarios = 8
-one_scenario = 1
-
-#########################################################################################
 # Add dimensions for stochastic part
 _SPMTA.add_dimensions!(test_case_bs,n_scenarios,n_hours)
 
@@ -72,7 +94,7 @@ _SPMTA.add_dimensions!(test_case_bs,n_scenarios,n_hours)
 # Uploading pdf samples for offshore wind and load data for Belgium
 year_wind = "2024"
 folder_data = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Elia_data"
-folder_results = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Results/case_30"
+#folder_results = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Results/case_30"
 
 Gaussian_samples = JSON.parsefile(joinpath(folder_data,"Gaussian_samples_8_Offshore_wind_$(year_wind)_Elia.json"))
 Elia_OFW = JSON.parsefile(joinpath(folder_data,"Offshore_wind_$(year_wind)_Elia_sorted.json"))
@@ -143,11 +165,15 @@ for i in 1:length(Elia_OFW)
     end
 end
 
-first_hour = 355
-last_hour = 378
+#first_hour = 355
+#last_hour  = 378
+
+
+first_hour = 6590
+last_hour  = 6613
 
 forecasted_wind = P50_11h[first_hour:last_hour]
-measured_wind = measured_11h[first_hour:last_hour]
+measured_wind   = measured_11h[first_hour:last_hour]
 hours_simulation_Elia = collect(first_hour:last_hour)
 
 
@@ -157,7 +183,6 @@ end_hour_simulation = last_hour - first_hour + 1
 hours = collect(start_hour_simulation:end_hour_simulation)
 n_scenarios = 8
 one_scenario = 1
-
 
 
 expected_value_wind = []
@@ -178,6 +203,7 @@ for i in hours_simulation_Elia
     push!(expected_value_wind, expected_value_wind_hourly)
 end
 
+#=
 forecasted_wind[20] = forecasted_wind[1]
 forecasted_wind[21] = forecasted_wind[2]
 forecasted_wind[22] = forecasted_wind[3]
@@ -195,46 +221,76 @@ expected_value_wind[21] = expected_value_wind[2]
 expected_value_wind[22] = expected_value_wind[3]
 expected_value_wind[23] = expected_value_wind[4]
 expected_value_wind[24] = expected_value_wind[5]
-
 for h in 20:24
     for s in 1:n_scenarios
         l = (h - 1)*n_scenarios + s
         n = (h - 19)*n_scenarios + s
-        #if scenarios_wind["$l"]["hour"] == h && scenarios_wind["$l"]["scenario"] == s
-        scenarios_wind["$l"]["samples_pu"] = scenarios_wind["$(n)"]["samples_pu"]
-        scenarios_wind["$l"]["probability"] = scenarios_wind["$(n)"]["probability"]
-        #end
+        scenarios_wind["$l"] = scenarios_wind["$n"]
     end
 end
+=#
 
-plot(forecasted_wind)
-plot!(measured_wind)
-plot!(expected_value_wind)
+json_forecasted_wind     = JSON.json(forecasted_wind    )
+json_measured_wind       = JSON.json(measured_wind      )
+json_expected_value_wind = JSON.json(expected_value_wind)
+json_scenarios_wind      = JSON.json(scenarios_wind     )
 
+
+plot(1:n_hours,forecasted_wind, label = "Forecasted", grid = :none,xticks = 1:n_hours,yticks = 0:0.2:1,ylims = (-0.01,1.1),xlims = (0.8,n_hours+0.2),xlabel = "Hour",ylabel = "Capacity factor [-]"
+,legend = :topright,xlabelfontsize = 10,ylabelfontsize = 10,xtickfont = font(8),ytickfont = font(8))
+plot!(1:n_hours,measured_wind, label = "Measured")
+plot!(1:n_hours,expected_value_wind, label = "Expected value")
+
+savefig(joinpath(results_folder_figures,case_figures,"Wind_capacity_factors_$(first_hour)_$(last_hour).svg"))
 
 #=
-forecasted_wind_all = P50_11h
-measured_wind_all = measured_11h
-hours_simulation_Elia_all = collect(1:8784)
+open(joinpath(@__DIR__,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_forecasted_wind) 
+end 
+open(joinpath(@__DIR__,"measured_wind_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_measured_wind) 
+end 
+open(joinpath(@__DIR__,"expected_value_wind_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_expected_value_wind) 
+end 
+open(joinpath(@__DIR__,"scenarios_wind_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_scenarios_wind) 
+end 
+=#
 
-expected_value_wind_all = []
-for i in hours_simulation_Elia_all
-    expected_value_wind_hourly_all = 0.0  
+values = []
+x_values = []
+x_values_single = []
+first_hour_show = 1
+last_hour_show = 12
+for i in first_hour_show:last_hour_show
+    push!(x_values_single,i)
     for s in 1:n_scenarios
-        expected_value_wind_hourly_all += expected_h["$i"]["samples_pu"][s]*expected_h["$i"]["pdf_normalized"][s]
+        l = (i - 1)*n_scenarios + s
+        push!(values,scenarios_wind["$l"]["samples_pu"])
+        push!(x_values,i)
     end
-    push!(expected_value_wind_all, expected_value_wind_hourly_all)
+end
+scatter(x_values,values,label = "Scenario samples",grid = :none,ylims = (-0.01,1.1),xticks = 1:n_hours,yticks = 0:0.2:1,xlims = (first_hour_show-0.2,last_hour_show+0.2),xlabel = "Hour",ylabel = "Capacity factor [-]",
+legend = :bottomleft,xlabelfontsize = 10,ylabelfontsize = 10,xtickfont = font(8),ytickfont = font(8))
+scatter!(x_values_single,forecasted_wind[first_hour_show:last_hour_show],label = "Forecasted")
+scatter!(x_values_single,measured_wind[first_hour_show:last_hour_show],label = "Measured")
+
+savefig(joinpath(results_folder_figures,case_figures,"Wind_capacity_factors_with_samples_$(first_hour)_$(last_hour)_$(first_hour_show)_$(last_hour_show).svg"))
+
+
+scatter(x_values[1:n_scenarios*2],values[1:n_scenarios*2],label = "Scenario samples",grid = :none,xlims = (0.8,2.4))
+for i in 1:n_scenarios*last_hour_show
+    annotate!(x_values[i]+0.03, values[i]+0.001, (x_values_single[i], 9, :blue))
+end
+display(current())
+
+
+diff_forecasted_measured = []
+for h in 1:length(P50_11h)
+    push!(diff_forecasted_measured,abs((P50_11h[h] - measured_11h[h])))
 end
 
-diff_exp_meas_all = measured_wind_all .- expected_value_wind_all
-diff_exp_forecast_all = measured_wind_all .- forecasted_wind_all
-
-diff_exp_forecast_all = expected_value_wind_all .- forecasted_wind_all
-
-scatter(diff_exp_forecast_all)
-findmax(diff_exp_meas_all)
-findmin(diff_exp_meas_all)
-=#
 #########################################################################################
 ## Running simulations
 # Busbar splitting
@@ -295,28 +351,6 @@ result_measured_24_lpac = Dict{String,Any}()
 result_expected_24_ac = Dict{String,Any}()
 result_expected_24_lpac = Dict{String,Any}()
 
-#=
-json_opf_results_opf_forecasted_ac = JSON.json(result_forecasted_24_ac)
-open(joinpath(results_folder,case,"24_hours_OPF_ac_forecasted.json"),"w") do f 
-    write(f, json_opf_results_opf_forecasted_ac) 
-end 
-
-json_opf_results_opf_forecasted_lpac = JSON.json(result_forecasted_24_lpac)
-open(joinpath(results_folder,case,"24_hours_OPF_lpac_forecasted.json"),"w") do f 
-    write(f, json_opf_results_opf_forecasted_lpac) 
-end 
-
-json_opf_results_opf_measured_ac = JSON.json(result_measured_24_ac)
-open(joinpath(results_folder,case,"24_hours_OPF_ac_measured.json"),"w") do f 
-    write(f, json_opf_results_opf_measured_ac) 
-end 
-
-json_opf_results_opf_measured_lpac = JSON.json(result_measured_24_lpac)
-open(joinpath(results_folder,case,"24_hours_OPF_lpac_measured.json"),"w") do f 
-    write(f, json_opf_results_opf_measured_lpac) 
-end 
-=#
-
 for hour in 1:(n_hours*one_scenario)
     result_forecasted_24_ac["$hour"] = _PM.solve_opf(test_case_opf_mn_forecasted["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
     result_forecasted_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_forecasted["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
@@ -325,6 +359,7 @@ for hour in 1:(n_hours*one_scenario)
     result_measured_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_measured["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
 end
 
+obj_forecasted_24_ac = [result_forecasted_24_ac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 obj_forecasted_24_lpac = [result_forecasted_24_lpac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 obj_measured_24_lpac = [result_measured_24_lpac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 
@@ -351,6 +386,38 @@ plot(obj_expected)
 plot!(obj_forecasted_24_lpac)
 plot!(obj_measured_24_lpac)
 
+
+json_result_forecasted_24_ac = JSON.json(result_forecasted_24_ac)
+json_result_forecasted_24_lpac = JSON.json(result_forecasted_24_lpac)
+
+json_result_measured_24_ac = JSON.json(result_measured_24_ac)
+json_result_measured_24_lpac = JSON.json(result_measured_24_lpac)
+
+#=
+json_opf_results_opf_forecasted_ac = JSON.json(result_forecasted_24_ac)
+open(joinpath(results_folder,case,"24_hours_OPF_ac_forecasted_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_opf_results_opf_forecasted_ac) 
+end 
+
+json_opf_results_opf_forecasted_lpac = JSON.json(result_forecasted_24_lpac)
+open(joinpath(results_folder,case,"24_hours_OPF_lpac_forecasted_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_opf_results_opf_forecasted_lpac) 
+end 
+
+json_opf_results_opf_measured_ac = JSON.json(result_measured_24_ac)
+open(joinpath(results_folder,case,"24_hours_OPF_ac_measured_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_opf_results_opf_measured_ac) 
+end 
+
+json_opf_results_opf_measured_lpac = JSON.json(result_measured_24_lpac)
+open(joinpath(results_folder,case,"24_hours_OPF_lpac_measured_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_opf_results_opf_measured_lpac) 
+end 
+=#
+
+
+
+
 ###########################################################################
 # -> OPFs are comparable now, data set built, need to tweak the functions to have a multistep-stochastic formulation
 
@@ -374,9 +441,27 @@ for i in 1:(n_hours*n_scenarios)
     test_case_bs_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind["$i"]["samples_pu"])
 end
 
-
-
 function prepare_starting_value_dict_lpac_nw_sp(grid,n_hours,n_scenarios)
+    count_ = 0
+    for hour in 1:n_hours
+        count_ += 1
+        for scenario_idx in 1:n_scenarios
+            n = (count_ - 1)*n_scenarios + scenario_idx
+            for (sw_id,sw) in grid["nw"]["$n"]["switch"]
+                if !haskey(sw,"auxiliary") # calling ZILs
+                    sw["starting_value"] = 1.0
+                else
+                    if haskey(grid["nw"]["$n"]["switch_couples"],sw_id)
+                        grid["nw"]["$n"]["switch"]["$(grid["nw"]["$n"]["switch_couples"][sw_id]["f_sw"])"]["starting_value"] = 0.0
+                        grid["nw"]["$n"]["switch"]["$(grid["nw"]["$n"]["switch_couples"][sw_id]["t_sw"])"]["starting_value"] = 1.0
+                    end
+                end
+            end
+        end
+    end
+end
+# Add everything for a warm start
+function prepare_starting_value_dict_lpac_nw_sp_all_variables(grid,n_hours,n_scenarios)
     count_ = 0
     for hour in 1:n_hours
         count_ += 1
@@ -412,12 +497,62 @@ for hour in 1:n_hours
     end
 end
 
+result_bs_hourly_forecasted_24 = run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi_lpac,n_hours,one_scenario)
+result_bs_hourly_measured_24 = run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_mn_measured,LPACCPowerModel,gurobi_lpac,n_hours,one_scenario)
+
+json_result_bs_hourly_forecasted_24 = JSON.json(result_bs_hourly_forecasted_24)
+open(joinpath(results_folder,case,"24_hours_BS_forecasted_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_result_bs_hourly_forecasted_24) 
+end 
+
+json_result_bs_hourly_measured_24 = JSON.json(result_bs_hourly_measured_24)
+open(joinpath(results_folder,case,"24_hours_BS_measured_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_result_bs_hourly_measured_24) 
+end 
+
+[result_bs_hourly_forecasted_24["$i"]["objective"] for i in 1:n_hours]
+[result_bs_hourly_measured_24["$i"]["objective"] for i in 1:n_hours]
+
+result_forecasted_feasibility_checks_24_ac = run_feasibility_checks_per_hour(test_case_bs_mn_forecasted,result_bs_hourly_forecasted_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_feasibility_checks_24_lpac = run_feasibility_checks_per_hour(test_case_bs_mn_forecasted,result_bs_hourly_forecasted_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+
+[result_bs_hourly_forecasted_24["$h"]["solution"]["switch"]["1"]["status"] for h in 1:n_hours]
+
+result_measured_feasibility_checks_24_ac = run_feasibility_checks_per_hour(test_case_bs_mn_measured,result_bs_hourly_measured_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_lpac = run_feasibility_checks_per_hour(test_case_bs_mn_measured,result_bs_hourly_measured_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_measured_feasibility_checks_24_lpac = run_feasibility_checks_per_hour(test_case_bs_mn_measured,result_bs_hourly_forecasted_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+
+obj_bs_forecasted_ac = [result_forecasted_feasibility_checks_24_ac["$i"]["objective"] for i in 1:n_hours]
+sum(obj_bs_forecasted_ac)
+
+obj_bs_forecasted_lpac = [result_forecasted_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
+sum(obj_bs_forecasted_lpac)
+
+obj_bs_measured_ac = [result_measured_feasibility_checks_24_ac["$i"]["objective"] for i in 1:n_hours]
+sum(obj_bs_measured_ac)
+
+obj_bs_measured_lpac = [result_measured_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
+sum(obj_bs_measured_lpac)
+
+obj_bs_forecasted_measured_lpac = [result_forecasted_measured_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
+
+obj_bs_forecasted_measured_lpac .- obj_bs_measured_lpac
+
+json_opf_results_forecasted = JSON.json(result_bs_hourly_forecasted_24)
+open(joinpath(results_folder,case,"24_hours_forecasted_bs.json"),"w") do f 
+    write(f, json_opf_results_forecasted) 
+end 
+
+
+#=
 #result = Dict{String,Any}()
 #for hour in 1:n_hours
 #    result["$hour"] = Dict{String,Any}()
 #    result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly_sp(test_case_bs_mn_expected_hours_sp["$hour"],LPACCPowerModel,gurobi_opf; setting = s)
 #end
-hour_reduction = 6
+hour_reduction = 12
 
 test_case_bs_mn_expected_try = deepcopy(test_case_bs_mn_expected)
 test_case_bs_mn_expected_try["hours"] = hour_reduction
@@ -438,14 +573,271 @@ for i in 1:(n_hours*n_scenarios)
         delete!(test_case_bs_mn_measured_try["nw"],"$i")
     end
 end
+=#
+
+function run_stochastic_acdcsw_AC_ZIL_per_hour(grid, model, optimizer, n_hours, n_scenarios; setting = s)
+    result = Dict{String,Any}()
+    #=
+    for hour in 1:n_hours
+        result["$hour"] = Dict{String,Any}()
+        scenarios_hour = collect(((hour-1)*n_scenarios + 1):(hour*n_scenarios))
+        grid_hour = deepcopy(grid)
+        grid_hour["hours"] = 1
+        grid_hour["nw"]= Dict{String,Any}()
+        for i in scenarios_hour
+            grid_hour["nw"]["$i"] = deepcopy(grid["nw"]["$i"])
+        end    
+        result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly(grid_hour,model,optimizer; setting = setting)
+    end
+    =#
+    for hour in 1:n_hours*n_scenarios
+        result["$hour"] = Dict{String,Any}()
+        result["$hour"] = _PMTP.run_acdcsw_AC_big_M_ZIL_sp(grid["nw"]["$hour"],model,optimizer; setting = setting) 
+    end
+    return result
+end
+
+function run_feasibility_checks_per_hour(grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:length(grid["nw"])
+        result_feasibility_checks["$hour"] = Dict{String,Any}()
+        feasibility_check = deepcopy(grid["nw"]["$hour"])
+        feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+        _PMTP.prepare_AC_feasibility_check(result_bs["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+        result_feasibility_checks["$hour"] = _PM.solve_opf(feasibility_check,model,optimizer; setting = s)
+        #if isnan(result_feasibility_checks["$hour"]["objective"])
+        #    result_feasibility_checks["$hour"] = deepcopy(result_opf["$hour"])
+        #end
+    end
+    return result_feasibility_checks
+end
 
 #########################################################################
 #results_one_topology_sp_expected = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_mn_expected_try,LPACCPowerModel,gurobi; setting = s)
-results_one_topology_sp_forecasted = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_mn_forecasted_try,LPACCPowerModel,gurobi; setting = s)
-results_one_topology_sp_measured = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_mn_measured_try,LPACCPowerModel,gurobi; setting = s)
+results_one_topology_sp_forecasted = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi; setting = s)
+results_one_topology_sp_measured = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_measured,LPACCPowerModel,gurobi; setting = s)
+
+function prepare_AC_feasibility_check_mn(result_dict, input_dict, input_ac_check, switch_couples, extremes_dict,input_base)
+    orig_buses = maximum(parse.(Int, keys(input_base["bus"]))) # maximum value before splitting (in case the buses are not in numerical order)
+    for nw in eachindex(result_dict["solution"]["nw"])
+        for (sw_id,sw) in input_dict["nw"][nw]["switch"]
+         if !haskey(sw,"auxiliary")
+            println("SWITCH $sw_id, BUS from $(sw["f_bus"]), BUS to $(sw["t_bus"])")
+            if result_dict["solution"]["nw"][nw]["switch"][sw_id]["status"] >= 0.9 # Just reconnecting stuff
+                println("Switch $sw_id is closed, Connecting everything back, no busbar splitting on bus $(sw["bus_split"])")
+                for l in keys(switch_couples)
+                    #if haskey(switch_couples,sw_id) && switch_couples[l]["bus_split"] == sw["bus_split"] -> wrong, you are checking the ZIL sw here
+                    if switch_couples[l]["bus_split"] == sw["bus_split"] # coupling the switch couple to their split bus, if it closed, just connect everything back to the original switch
+                        println("SWITCH COUPLE IS $l")
+
+                        switch_t = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["t_sw"])"])
+                        switch_f = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["f_sw"])"])
+                        
+                        if switch_t["t_bus"] == switch_couples[l]["bus_split"]
+                            aux_t = switch_t["auxiliary"]
+                            orig_t = switch_t["original"]
+                            println("Element $aux_t $orig_t")
+                            if aux_t == "gen"
+                                input_ac_check["nw"][nw]["gen"]["$(orig_t)"]["gen_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["gen"]["$(orig_t)"]["gen_bus"])
+                                println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["gen"]["$(orig_t)"]["gen_bus"])")
+                            elseif aux_t == "load"
+                                input_ac_check["nw"][nw]["load"]["$(orig_t)"]["load_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["load"]["$(orig_t)"]["load_bus"])
+                                println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["load"]["$(orig_t)"]["load_bus"])")
+                            elseif aux_t == "convdc"
+                                input_ac_check["nw"][nw]["convdc"]["$(orig_t)"]["busac_i"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["convdc"]["$(orig_t)"]["busac_i"])
+                                println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["convdc"]["$(orig_t)"]["busac_i"])")
+                            elseif aux_t == "branch" 
+                                if input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                    input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"])")
+                                elseif input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                    input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"])")
+                                end
+                            end
+                        elseif switch_f["t_bus"] == switch_couples[l]["bus_split"]
+                            aux_f = switch_f["auxiliary"]
+                            orig_f = switch_f["original"]
+                            println("Element $aux_f $orig_f")
+                            if aux_f == "gen"
+                                input_ac_check["nw"][nw]["gen"]["$(orig_f)"]["gen_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["gen"]["$(orig_f)"]["gen_bus"])
+                                println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["gen"]["$(orig_f)"]["gen_bus"])")
+                            elseif aux_f == "load"
+                                input_ac_check["nw"][nw]["load"]["$(orig_f)"]["load_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["load"]["$(orig_f)"]["load_bus"])
+                                println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["load"]["$(orig_f)"]["load_bus"])")
+                            elseif aux_f == "convdc"
+                                input_ac_check["nw"][nw]["convdc"]["$(orig_f)"]["busac_i"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["convdc"]["$(orig_f)"]["busac_i"])
+                                println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["convdc"]["$(orig_f)"]["busac_i"])")
+                            elseif aux_f == "branch" 
+                                if input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                    input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"])")
+                                elseif input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                    input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"])")
+                                end
+                            end
+                        end
+                    end
+                end
+            elseif result_dict["solution"]["nw"][nw]["switch"][sw_id]["status"] <= 0.1 # Connect elements to the right bus
+                println("Switch $sw_id is open, busbar splitting on bus $(sw["bus_split"])")
+                delete!(input_ac_check["nw"][nw]["switch"],sw_id)
+                for l in keys(switch_couples)
+                    if switch_couples[l]["bus_split"] == sw["bus_split"] # coupling the switch couple to their split bus
+                        println("SWITCH COUPLE IS $l")
+                            switch_t = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["t_sw"])"]) 
+                            aux_t = switch_t["auxiliary"]
+                            orig_t = switch_t["original"]
+                            println("Element $aux_t $orig_t")
+                            if result_dict["solution"]["nw"][nw]["switch"]["$(switch_t["index"])"]["status"] <= 0.1
+                                println("Deleting switch $(switch_t["index"])")
+                                delete!(input_ac_check["nw"][nw]["switch"],"$(switch_t["index"])")
+                            elseif result_dict["solution"]["nw"][nw]["switch"]["$(switch_t["index"])"]["status"] >= 0.9
+                                if aux_t == "gen"
+                                    input_ac_check["nw"][nw]["gen"]["$(orig_t)"]["gen_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["gen"]["$(orig_t)"]["gen_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["gen"]["$(orig_t)"]["gen_bus"])")
+                                elseif aux_t == "load"
+                                    input_ac_check["nw"][nw]["load"]["$(orig_t)"]["load_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["load"]["$(orig_t)"]["load_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["load"]["$(orig_t)"]["load_bus"])")
+                                elseif aux_t == "convdc"
+                                    input_ac_check["nw"][nw]["convdc"]["$(orig_t)"]["busac_i"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["convdc"]["$(orig_t)"]["busac_i"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["convdc"]["$(orig_t)"]["busac_i"])")
+                                elseif aux_t == "branch" 
+                                    if input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                        input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                        delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"])
+                                        println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["f_bus"])")
+                                    elseif input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                        input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_t["index"])"]["t_bus"])
+                                        delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"])
+                                        println("Element $aux_t $orig_t connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_t)"]["t_bus"])")
+                                    end
+                                end
+                            end
+                        
+
+                            switch_f = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["f_sw"])"]) 
+                            aux_f = switch_f["auxiliary"]
+                            orig_f = switch_f["original"]
+                            println("Element $aux_f $orig_f")
+                            if result_dict["solution"]["nw"][nw]["switch"]["$(switch_f["index"])"]["status"] <= 0.1
+                                println("Deleting switch $(switch_f["index"])")
+                                delete!(input_ac_check["nw"][nw]["switch"],"$(switch_f["index"])")
+                            elseif result_dict["solution"]["nw"][nw]["switch"]["$(switch_f["index"])"]["status"] >= 0.9
+                                if aux_f == "gen"
+                                    input_ac_check["nw"][nw]["gen"]["$(orig_f)"]["gen_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["gen"]["$(orig_f)"]["gen_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["gen"]["$(orig_f)"]["gen_bus"])")
+                                elseif aux_f == "load"
+                                    input_ac_check["nw"][nw]["load"]["$(orig_f)"]["load_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["load"]["$(orig_f)"]["load_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["load"]["$(orig_f)"]["load_bus"])")
+                                elseif aux_f == "convdc"
+                                    input_ac_check["nw"][nw]["convdc"]["$(orig_f)"]["busac_i"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["convdc"]["$(orig_f)"]["busac_i"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["convdc"]["$(orig_f)"]["busac_i"])")
+                                elseif aux_f == "branch" 
+                                    if input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                        input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                        delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"])
+                                        println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["f_bus"])")
+                                    elseif input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"] > orig_buses && input_dict["nw"][nw]["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                        input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"] = deepcopy(input_dict["nw"][nw]["switch"]["$(switch_f["index"])"]["t_bus"])
+                                        delete!(input_ac_check["nw"][nw]["bus"],input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"])
+                                        println("Element $aux_f $orig_f connected to $(input_ac_check["nw"][nw]["branch"]["$(orig_f)"]["t_bus"])")
+                                    end
+                                end
+                            end
+                    end
+                end
+            end
+            input_ac_check["nw"][nw]["switch"] = Dict{String,Any}()
+            input_ac_check["nw"][nw]["switch_couples"] = Dict{String,Any}()
+        end
+    end
+    end
+end
 
 
-# -> 'gurobi' works for 1,2,4,6 hours
+function run_feasibility_checks_per_hour_one_topology(grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:length(grid["nw"])
+        result_feasibility_checks["$hour"] = Dict{String,Any}()
+        feasibility_check = deepcopy(grid)
+        feasibility_check_input = deepcopy(grid)
+        prepare_AC_feasibility_check_mn(result_bs,feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+        result_feasibility_checks["$hour"] = _PM.solve_opf(feasibility_check["nw"]["$hour"],model,optimizer; setting = s)
+        #if isnan(result_feasibility_checks["$hour"]["objective"])
+        #    result_feasibility_checks["$hour"] = deepcopy(result_opf["$hour"])
+        #end
+    end
+    return result_feasibility_checks
+end
+
+
+json_results_one_topology_sp_forecasted = JSON.json(results_one_topology_sp_forecasted)
+open(joinpath(results_folder,case,"One_topology_24_hours_forecasted.json"),"w") do f 
+    write(f, json_results_one_topology_sp_forecasted) 
+end 
+
+json_results_one_topology_sp_measured = JSON.json(results_one_topology_sp_measured)
+open(joinpath(results_folder,case,"One_topology_24_hours_measured.json"),"w") do f 
+    write(f, json_results_one_topology_sp_measured) 
+end 
+
+result_forecasted_feasibility_checks_24_ac_one_topology = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_forecasted,results_one_topology_sp_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_feasibility_checks_24_lpac_one_topology = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_forecasted,results_one_topology_sp_forecasted,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_ac_one_topology = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_lpac_one_topology = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_measured,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+
+for (sw_id,sw) in test_case_bs_mn_forecasted["nw"]["1"]["switch"]
+    println("SWITCH $sw_id, BUS from $(sw["f_bus"]), BUS to $(sw["t_bus"]), STATUS FORECASTED $(results_one_topology_sp_forecasted_max_sw["solution"]["nw"]["1"]["switch"]["$sw_id"]["status"]), STATUS MEASURED $(results_one_topology_sp_measured_max_sw["solution"]["nw"]["1"]["switch"]["$sw_id"]["status"])")
+end
+
+
+
+result_forecasted_with_measured_values_feasibility_checks_24_lpac_one_topology = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_forecasted,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+
+obj_bs_forecasted_lpac_one_topology   = [result_forecasted_feasibility_checks_24_lpac_one_topology["$h"]["objective"] for h in 1:24]
+obj_bs_forecasted_ac_one_topology = [result_forecasted_feasibility_checks_24_ac_one_topology["$h"]["objective"] for h in 1:24]
+obj_bs_measured_ac_one_topology   = [result_measured_feasibility_checks_24_ac_one_topology["$h"]["objective"] for h in 1:24]
+obj_bs_measured_lpac_one_topology = [result_measured_feasibility_checks_24_lpac_one_topology["$h"]["objective"] for h in 1:24]
+obj_bs_forecasted_with_measured_lpac_one_topology = [result_forecasted_with_measured_values_feasibility_checks_24_lpac_one_topology["$h"]["objective"] for h in 1:24]
+
+
+obj_bs_forecasted_ac = [result_forecasted_feasibility_checks_24_ac["$i"]["objective"] for i in 1:n_hours]
+obj_bs_forecasted_lpac = [result_forecasted_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
+obj_bs_measured_ac = [result_measured_feasibility_checks_24_ac["$i"]["objective"] for i in 1:n_hours]
+obj_bs_measured_lpac = [result_measured_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
+
+
+plot(obj_bs_forecasted_ac)
+plot!(obj_bs_forecasted_ac_one_topology)
+
+
+plot(obj_bs_measured_ac)
+plot!(obj_bs_measured_ac_one_topology)
+
+
+
+[results_one_topology_sp_forecasted["solution"]["nw"]["$h"]["switch"]["5"]["status"] for h in 1:24]
+
 
 result = Dict{String,Any}()
 for hour in 1:n_hours
@@ -477,7 +869,127 @@ end
 
 results_one_topology_sp_forecasted_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi)
 results_one_topology_sp_measured_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_measured,LPACCPowerModel,gurobi)
-results_one_topology_sp_expected_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_expected,LPACCPowerModel,gurobi)
+
+
+json_results_one_topology_sp_forecasted = JSON.json(results_one_topology_sp_forecasted_max_sw)
+open(joinpath(results_folder,case,"$(test_case_bs_mn_forecasted["total_switching_actions"])_maximum_actions_24_hours_forecasted.json"),"w") do f 
+    write(f, json_results_one_topology_sp_forecasted) 
+end 
+
+json_results_one_topology_sp_measured = JSON.json(results_one_topology_sp_measured_max_sw)
+open(joinpath(results_folder,case,"$(test_case_bs_mn_forecasted["total_switching_actions"])_maximum_actions_24_hours_measured.json"),"w") do f 
+    write(f, json_results_one_topology_sp_measured) 
+end 
+
+
+
+result_forecasted_feasibility_checks_24_ac_one_max_sw = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_forecasted,results_one_topology_sp_forecasted_max_sw,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_feasibility_checks_24_lpac_one_max_sw = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_forecasted,results_one_topology_sp_forecasted_max_sw,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_ac_one_max_sw = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_measured_max_sw,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_lpac_one_max_sw = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_measured_max_sw,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_with_measured_values_feasibility_checks_24_lpac_max_sw = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_forecasted_max_sw,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+
+obj_bs_forecasted_lpac_one_sw   = [result_forecasted_feasibility_checks_24_lpac_one_max_sw["$h"]["objective"] for h in 1:24]
+obj_bs_forecasted_ac_one_sw = [result_forecasted_feasibility_checks_24_ac_one_max_sw["$h"]["objective"] for h in 1:24]
+obj_bs_measured_ac_one_sw   = [result_measured_feasibility_checks_24_ac_one_max_sw["$h"]["objective"] for h in 1:24]
+obj_bs_measured_lpac_one_sw = [result_measured_feasibility_checks_24_lpac_one_max_sw["$h"]["objective"] for h in 1:24]
+obj_bs_forecasted_with_measured_lpac_one_sw = [result_forecasted_with_measured_values_feasibility_checks_24_lpac_max_sw["$h"]["objective"] for h in 1:24]
+
+obj_bs_forecasted_with_measured_lpac_one_sw .- obj_bs_measured_lpac_one_sw
+
+#######
+
+test_case_bs_mn_forecasted_try_max_sw_2 = deepcopy(test_case_bs_mn_forecasted)
+test_case_bs_mn_measured_try_max_sw_2 = deepcopy(test_case_bs_mn_measured)
+test_case_bs_mn_expected_try_max_sw_2 = deepcopy(test_case_bs_mn_expected)
+
+test_case_bs_mn_forecasted["total_switching_actions"] = 2
+test_case_bs_mn_measured["total_switching_actions"] = 2
+test_case_bs_mn_expected["total_switching_actions"] = 2
+
+for (sw_id,sw) in test_case_bs_mn_forecasted["nw"]["1"]["switch"]
+    sw["maximum_actions"] = 2
+end
+for (sw_id,sw) in test_case_bs_mn_measured["nw"]["1"]["switch"]
+    sw["maximum_actions"] = 2
+end
+for (sw_id,sw) in test_case_bs_mn_expected["nw"]["1"]["switch"]
+    sw["maximum_actions"] = 2
+end
+
+results_one_topology_sp_forecasted_max_sw_2 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi)
+results_one_topology_sp_measured_max_sw_2 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_measured,LPACCPowerModel,gurobi)
+
+
+[results_one_topology_sp_forecasted_max_sw_2["solution"]["nw"]["$h"]["switch"]["1"]["status"] for h in 1:24]
+
+json_results_one_topology_sp_forecasted = JSON.json(results_one_topology_sp_forecasted_max_sw_2)
+open(joinpath(results_folder,case,"$(test_case_bs_mn_forecasted["total_switching_actions"])_maximum_actions_24_hours_forecasted.json"),"w") do f 
+    write(f, json_results_one_topology_sp_forecasted) 
+end 
+
+json_results_one_topology_sp_measured = JSON.json(results_one_topology_sp_measured_max_sw_2)
+open(joinpath(results_folder,case,"$(test_case_bs_mn_forecasted["total_switching_actions"])_maximum_actions_24_hours_measured.json"),"w") do f 
+    write(f, json_results_one_topology_sp_measured) 
+end 
+
+
+
+result_forecasted_feasibility_checks_24_ac_max_sw_2 = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_forecasted,results_one_topology_sp_forecasted_max_sw_2,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_feasibility_checks_24_lpac_max_sw_2 = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_forecasted,results_one_topology_sp_forecasted_max_sw_2,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_ac_max_sw_2 = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_measured_max_sw_2,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_measured_feasibility_checks_24_lpac_max_sw_2 = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_measured,results_one_topology_sp_measured_max_sw_2,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+obj_bs_forecasted_lpac_two_sw   = [result_forecasted_feasibility_checks_24_lpac_max_sw_2["$h"]["objective"] for h in 1:24]
+obj_bs_forecasted_ac_two_sw = [result_forecasted_feasibility_checks_24_ac_max_sw_2["$h"]["objective"] for h in 1:24]
+obj_bs_measured_ac_two_sw   = [result_measured_feasibility_checks_24_ac_max_sw_2["$h"]["objective"] for h in 1:24]
+obj_bs_measured_lpac_two_sw = [result_measured_feasibility_checks_24_lpac_max_sw_2["$h"]["objective"] for h in 1:24]
+
+plot(obj_bs_forecasted_ac_two_sw)
+plot!(obj_bs_forecasted_ac_one_sw)
+plot!(obj_bs_forecasted_ac_one_topology)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###################
+
+obj_bs_forecasted_ac_one_max_sw = [result_forecasted_feasibility_checks_24_ac_one_max_sw["$i"]["objective"] for i in 1:n_hours]
+obj_bs_forecasted_lpac_one_max_sw = [result_forecasted_feasibility_checks_24_lpac_one_max_sw["$i"]["objective"] for i in 1:n_hours]
+obj_bs_measured_ac_one_max_sw = [result_measured_feasibility_checks_24_ac_one_max_sw["$i"]["objective"] for i in 1:n_hours]
+obj_bs_measured_lpac_one_max_sw = [result_measured_feasibility_checks_24_lpac_one_max_sw["$i"]["objective"] for i in 1:n_hours]
+
+
+
+[results_one_topology_sp_forecasted_max_sw["solution"]["nw"]["$h"]["switch"]["1"]["status"] for h in 1:n_hours]
+[results_one_topology_sp_forecasted_max_sw["solution"]["nw"]["$h"]["switch"]["2"]["status"] for h in 1:n_hours]
+[results_one_topology_sp_forecasted_max_sw["solution"]["nw"]["$h"]["switch"]["3"]["status"] for h in 1:n_hours]
+
+
+
+gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1800,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"ScaleFlag"=>2,"MIPFocus"=>3) 
+results_one_topology_sp_expected_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_expected,LPACCPowerModel,gurobi_bs)
 
 results_one_topology_sp_expected_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches_stochastic(test_case_bs_mn_expected,LPACCPowerModel,gurobi)
 
