@@ -84,6 +84,10 @@ function build_acdc_full_redispatch_opf(pm::_PM.AbstractPowerModel)
         _PM.constraint_theta_ref(pm, i)
     end
 
+    for i in _PM.ids(pm, :gen)
+        constraint_gen_redispatch(pm, i)
+    end
+
     for i in _PM.ids(pm, :bus)
         constraint_power_balance_ac_redispatch(pm, i)
     end
@@ -140,6 +144,38 @@ function run_hourly_redispatch(grid, result_bs, model, optimizer,switches_couple
     return result_feasibility_checks
 end
 
+function run_hourly_redispatch_fc(grid, result_bs, results_fc, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:length(grid["nw"])
+        result_feasibility_checks["$hour"] = Dict{String,Any}()
+        feasibility_check = deepcopy(grid["nw"]["$hour"])
+        feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+        _PMTP.prepare_AC_feasibility_check(result_bs["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+        # Adding set points
+        for (g_id,g) in feasibility_check["gen"]
+            g["pg_start"] = results_fc["$hour"]["solution"]["gen"][g_id]["pg"]
+            g["qg_start"] = results_fc["$hour"]["solution"]["gen"][g_id]["qg"]
+            if length(g["cost"]) > 1
+                g["redispatch_cost_up"] = g["cost"][1]
+                g["redispatch_cost_down"] = g["cost"][1]
+            else
+                g["redispatch_cost_up"] = 0.0
+                g["redispatch_cost_down"] = 0.0
+            end
+            if g_id == "1"
+                g["redispatch_cost_up"] = 10.0
+                g["redispatch_cost_down"] = 10.0
+                #println("Generator 1 has a cost up of $(g["redispatch_cost_up"])")
+                #println("Generator 1 has a cost down of $(g["redispatch_cost_down"])")
+            end
+        end
+
+        result_feasibility_checks["$hour"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+    end
+    return result_feasibility_checks
+end
+
 function run_hourly_redispatch_one_topology(grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings)
     result_feasibility_checks = Dict{String,Any}()
     for hour in 1:length(grid["nw"])
@@ -166,11 +202,43 @@ function run_hourly_redispatch_one_topology(grid, result_bs, model, optimizer,sw
     return result_feasibility_checks
 end
 
+function run_hourly_redispatch_one_topology_fc(grid, result_bs, results_fc, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:length(grid["nw"])
+        result_feasibility_checks["$hour"] = Dict{String,Any}()
+        feasibility_check = deepcopy(grid["nw"]["$hour"])
+        feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+        prepare_AC_feasibility_check_stochastic(result_bs["solution"]["nw"]["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+        # Adding set points
+        for (g_id,g) in feasibility_check["gen"]
+            g["pg_start"] = results_fc["$hour"]["solution"]["gen"][g_id]["pg"]
+            g["qg_start"] = results_fc["$hour"]["solution"]["gen"][g_id]["qg"]
+            if length(g["cost"]) > 1
+                g["redispatch_cost_up"] = g["cost"][1]
+                g["redispatch_cost_down"] = g["cost"][1]
+            else
+                g["redispatch_cost_up"] = 0.0
+                g["redispatch_cost_down"] = 0.0
+            end
+            if g_id == "1"
+                g["redispatch_cost_up"] = 10.0
+                g["redispatch_cost_down"] = 10.0
+                #println("Generator 1 has a cost up of $(g["redispatch_cost_up"])")
+                #println("Generator 1 has a cost down of $(g["redispatch_cost_down"])")
+            end
+        end
+
+        result_feasibility_checks["$hour"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+    end
+    return result_feasibility_checks
+end
 
 function run_hourly_redispatch_scenarios(grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings,n_hours,n_scenarios)
     result_feasibility_checks = Dict{String,Any}()
     for hour in 1:n_hours
         for s in 1:n_scenarios
+            # This has to incclude all the scenarios
             if s == 1
                 timestep = (hour - 1)*n_scenarios + s
                 if haskey(result_bs,"solution")
@@ -230,8 +298,152 @@ function print_gen_redispatch(grid,results,n_hours)
             if abs(results["$hour"]["solution"]["gen"][g_id]["pg_up"]) > 10^(-4)
                 println("Generator $g_id: pg_up = $(results["$hour"]["solution"]["gen"][g_id]["pg_up"])")
             elseif abs(results["$hour"]["solution"]["gen"][g_id]["pg_down"]) > 10^(-4)
-                println("Generator $g_id: pg_up = $(results["$hour"]["solution"]["gen"][g_id]["pg_down"])")
+                println("Generator $g_id: pg_down = $(results["$hour"]["solution"]["gen"][g_id]["pg_down"])")
             end
         end
     end
+end
+
+function run_hourly_redispatch_stochastic(grid, stochastic_grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings,n_hours,n_scenarios)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:n_hours
+        for s in 1:n_scenarios
+            # This has to include all the scenarios
+                timestep = (hour - 1)*n_scenarios + s
+                if haskey(result_bs,"solution")
+                    result_feasibility_checks["$timestep"] = Dict{String,Any}()
+                    feasibility_check = deepcopy(grid["nw"]["$hour"])
+                    feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+                    prepare_AC_feasibility_check_stochastic(result_bs["solution"]["nw"]["$timestep"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+                    # Adding set points
+                    for (g_id,g) in feasibility_check["gen"]
+                        g["pg_start"] = result_bs["solution"]["nw"]["$timestep"]["gen"][g_id]["pg"]
+                        g["qg_start"] = result_bs["solution"]["nw"]["$timestep"]["gen"][g_id]["qg"]
+                        if length(g["cost"]) > 1
+                            g["redispatch_cost_up"] = g["cost"][1]
+                            g["redispatch_cost_down"] = g["cost"][1]
+                        else
+                            g["redispatch_cost_up"] = 0.0
+                            g["redispatch_cost_down"] = 0.0
+                        end
+                    end
+                
+                    result_feasibility_checks["$timestep"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+                    result_feasibility_checks["$timestep"]["probability"] = stochastic_grid["nw"]["$timestep"]["probability"]
+                
+                elseif haskey(result_bs["$hour"]["solution"],"nw")
+                    result_feasibility_checks["$timestep"] = Dict{String,Any}()
+                    feasibility_check = deepcopy(grid["nw"]["$hour"])
+                    feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+                    prepare_AC_feasibility_check_stochastic(result_bs["$hour"]["solution"]["nw"]["$s"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+                    # Adding set points
+                    for (g_id,g) in feasibility_check["gen"]
+                        g["pg_start"] = result_bs["$hour"]["solution"]["nw"]["$s"]["gen"][g_id]["pg"]
+                        g["qg_start"] = result_bs["$hour"]["solution"]["nw"]["$s"]["gen"][g_id]["qg"]
+                        if length(g["cost"]) > 1
+                            g["redispatch_cost_up"] = g["cost"][1]
+                            g["redispatch_cost_down"] = g["cost"][1]
+                        else
+                            g["redispatch_cost_up"] = 0.0
+                            g["redispatch_cost_down"] = 0.0
+                        end
+                    end
+                
+                    result_feasibility_checks["$timestep"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+                    result_feasibility_checks["$timestep"]["probability"] = stochastic_grid["nw"]["$timestep"]["probability"]
+                end
+        end
+    end
+    return result_feasibility_checks
+end
+
+function run_hourly_redispatch_stochastic_fc(grid, stochastic_grid, result_bs, results_fc, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings,n_hours,n_scenarios)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:n_hours
+        for s in 1:n_scenarios
+            # This has to include all the scenarios
+                timestep = (hour - 1)*n_scenarios + s
+                if haskey(result_bs,"solution")
+                    result_feasibility_checks["$timestep"] = Dict{String,Any}()
+                    feasibility_check = deepcopy(grid["nw"]["$hour"])
+                    feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+                    prepare_AC_feasibility_check_stochastic(result_bs["solution"]["nw"]["$timestep"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+                    # Adding set points
+                    for (g_id,g) in feasibility_check["gen"]
+                        g["pg_start"] = results_fc["$timestep"]["solution"]["gen"][g_id]["pg"]
+                        g["qg_start"] = results_fc["$timestep"]["solution"]["gen"][g_id]["qg"]
+                        if length(g["cost"]) > 1 && g_id != "1"
+                            g["redispatch_cost_up"] = g["cost"][1]
+                            g["redispatch_cost_down"] = g["cost"][1]
+                        elseif length(g["cost"]) > 1 && g_id == "1"
+                            g["redispatch_cost_up"] = 10.0
+                            g["redispatch_cost_down"] = 10.0
+                        elseif length(g["cost"]) < 1
+                            g["redispatch_cost_up"] = 0.0
+                            g["redispatch_cost_down"] = 0.0
+                        end
+                    end
+                
+                    result_feasibility_checks["$timestep"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+                    result_feasibility_checks["$timestep"]["probability"] = stochastic_grid["nw"]["$timestep"]["probability"]
+                
+                elseif haskey(result_bs["$hour"]["solution"],"nw")
+                    result_feasibility_checks["$timestep"] = Dict{String,Any}()
+                    feasibility_check = deepcopy(grid["nw"]["$hour"])
+                    feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+                    prepare_AC_feasibility_check_stochastic(result_bs["$hour"]["solution"]["nw"]["$s"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+                    # Adding set points
+                    for (g_id,g) in feasibility_check["gen"]
+                        g["pg_start"] = results_fc["$timestep"]["solution"]["gen"][g_id]["pg"]
+                        g["qg_start"] = results_fc["$timestep"]["solution"]["gen"][g_id]["qg"]
+                        if length(g["cost"]) > 1 && g_id != "1"
+                            g["redispatch_cost_up"] = g["cost"][1]
+                            g["redispatch_cost_down"] = g["cost"][1]
+                        elseif length(g["cost"]) > 1 && g_id == "1"
+                            g["redispatch_cost_up"] = 0.0
+                            g["redispatch_cost_down"] = 0.0
+                        elseif length(g["cost"]) < 1
+                            g["redispatch_cost_up"] = 0.0
+                            g["redispatch_cost_down"] = 0.0
+                        end
+                    end
+                
+                    result_feasibility_checks["$timestep"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+                    result_feasibility_checks["$timestep"]["probability"] = stochastic_grid["nw"]["$timestep"]["probability"]
+                end
+        end
+    end
+    return result_feasibility_checks
+end
+
+function run_hourly_redispatch_opf(grid, result_opf, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:length(grid["nw"])
+        result_feasibility_checks["$hour"] = Dict{String,Any}()
+        feasibility_check = deepcopy(grid["nw"]["$hour"])
+        feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+        #_PMTP.prepare_AC_feasibility_check(result_opf["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+
+        # Adding set points
+        for (g_id,g) in feasibility_check["gen"]
+            g["pg_start"] = result_opf["$hour"]["solution"]["gen"][g_id]["pg"]
+            g["qg_start"] = result_opf["$hour"]["solution"]["gen"][g_id]["qg"]
+            if length(g["cost"]) > 1 && g_id != "1"
+                g["redispatch_cost_up"] = g["cost"][1]
+                g["redispatch_cost_down"] = g["cost"][1]
+            elseif length(g["cost"]) > 1 && g_id == "1"
+                g["redispatch_cost_up"] = 10.0
+                g["redispatch_cost_down"] = 10.0
+            elseif length(g["cost"]) < 1
+                g["redispatch_cost_up"] = 0.0
+                g["redispatch_cost_down"] = 0.0
+            end    
+        end
+        result_feasibility_checks["$hour"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
+    end
+    return result_feasibility_checks
 end

@@ -91,8 +91,8 @@ function calc_gen_redispatch_cost(pm::_PM.AbstractPowerModel, n::Int)
     cost = JuMP.AffExpr(0.0)
     for (i,g) in pm.ref[:it][:pm][n][:gen]
         if length(g["cost"]) ≥ 2
-            JuMP.add_to_expression!(cost, g["redispatch_cost_up"], _PM.var(pm,n,:pg_up,i) - pm.ref[:it][:pm][:nw][n][:gen][i]["pg_start"])
-            JuMP.add_to_expression!(cost, g["redispatch_cost_down"], pm.ref[:it][:pm][:nw][n][:gen][i]["pg_start"] - _PM.var(pm,n,:pg_down,i))
+            JuMP.add_to_expression!(cost, g["redispatch_cost_up"], _PM.var(pm,n,:pg_up,i))# - pm.ref[:it][:pm][:nw][n][:gen][i]["pg_start"])
+            JuMP.add_to_expression!(cost, g["redispatch_cost_down"], _PM.var(pm,n,:pg_down,i))#pm.ref[:it][:pm][:nw][n][:gen][i]["pg_start"] - _PM.var(pm,n,:pg_down,i))
         end
     end
     return cost

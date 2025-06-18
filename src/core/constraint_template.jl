@@ -106,3 +106,13 @@ function constraint_power_balance_ac_redispatch(pm::_PM.AbstractPowerModel, i::I
 
     constraint_power_balance_ac_redispatch(pm, nw, i, bus_arcs, bus_arcs_dc, bus_gens, bus_convs_ac, bus_loads, bus_shunts, pd, qd, gs, bs, pg_start, qg_start)
 end
+
+function constraint_gen_redispatch(pm::_PM.AbstractPowerModel, i::Int; nw::Int=_PM.nw_id_default)
+    pg_start = _PM.ref(pm, nw, :gen, i, "pg_start")
+    qg_start = _PM.ref(pm, nw, :gen, i, "qg_start")
+
+    pmax = _PM.ref(pm, nw, :gen, i, "pmax")
+    qmax = _PM.ref(pm, nw, :gen, i, "qmax")
+
+    constraint_gen_redispatch(pm, nw, i, pg_start, qg_start,pmax,qmax)
+end

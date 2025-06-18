@@ -87,9 +87,9 @@ forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hou
 measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
 average_forecasted_measured_wind = [mean([forecasted_wind[i],measured_wind[i]]) for i in 1:length(forecasted_wind)]
 
-plot(forecasted_wind)
-plot!(measured_wind)
-plot!(average_forecasted_measured_wind)
+plot(forecasted_wind,label = "Forecasted wind",grid = :none,ylims = (0,1.2),legend = :topleft,xticks = 1:1:24,xlabel = "Hour",ylabel = "Capacity factor [-]",)
+plot!(measured_wind,label = "Average forecasted-measured wind")
+plot!(average_forecasted_measured_wind,label = "Measured wind")
 
 scenarios_wind_4 = JSON.parsefile(joinpath(results_folder,case,"scenario_wind_4_$(first_hour)_$(last_hour)_modified.json"))
 scenarios_wind_8 = JSON.parsefile(joinpath(results_folder,case,"scenario_wind_8_$(first_hour)_$(last_hour)_modified.json"))
@@ -168,6 +168,8 @@ obj_measured_24_ac = [result_measured_24_ac["$i"]["objective"] for i in 1:(n_hou
 obj_average_24_ac = [result_average_24_ac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 obj_average_24_lpac = [result_average_24_lpac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 
+
+
 plot(obj_forecasted_24_ac)
 plot!(obj_average_24_ac)
 plot!(obj_measured_24_ac)
@@ -204,6 +206,33 @@ plot!(obj_forecasted_24_ac./10^3,label = "Forecasted")
 plot!(obj_adjusted_24_ac./10^3,label = "Adjusted")
 plot!(obj_average_24_ac./10^3,label = "Average")
 savefig(joinpath(results_folder_figures,"case_30","OPF_results_$(first_hour)_$(last_hour)_modified.svg"))
+
+
+json_hourly_forecasted_24 = JSON.json(result_forecasted_24_ac)
+open(joinpath(results_folder,case,"Hourly_opf_forecasted_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_hourly_forecasted_24) 
+end 
+
+json_hourly_measured_24 = JSON.json(result_measured_24_ac)
+open(joinpath(results_folder,case,"Hourly_opf_measured_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_hourly_measured_24) 
+end 
+
+json_hourly_average_24 = JSON.json(result_average_24_ac)
+open(joinpath(results_folder,case,"Hourly_opf_average_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_hourly_average_24) 
+end 
+
+json_hourly_expected_24 = JSON.json(result_expected_24_ac)
+open(joinpath(results_folder,case,"Hourly_opf_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_hourly_expected_24) 
+end 
+
+json_hourly_adjusted_24 = JSON.json(result_adjusted_24_ac)
+open(joinpath(results_folder,case,"Hourly_opf_stochastic_4_scenarios_adjusted_$(first_hour)_$(last_hour).json"),"w") do f 
+    write(f, json_hourly_adjusted_24) 
+end 
+
 
 
 ###########################################################################

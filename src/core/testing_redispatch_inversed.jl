@@ -53,13 +53,13 @@ scenario_wind_4 = JSON.parsefile(joinpath(input_folder,"case30","scenario_wind_4
 scenario_wind_4_adjusted = JSON.parsefile(joinpath(input_folder,"case30","scenario_wind_4_$(first_hour)_$(last_hour)_adjusted.json"))
 scenario_wind_8 = JSON.parsefile(joinpath(input_folder,"case30","scenario_wind_8_$(first_hour)_$(last_hour)_modified.json"))
 
-plot(measured_wind,label = "Measured",xticks = 1:1:24, grid = :none, color = :lightblue,ylims = (0,1.2), xlabel = "Hour", ylabel = "Offshore wind capacity factor [-]",legend = :topleft)
+plot(forecasted_wind,label = "Measured",xticks = 1:1:24, grid = :none, color = :lightblue,ylims = (0,1.2), xlabel = "Hour", ylabel = "Offshore wind capacity factor [-]",legend = :topleft)
 plot!(average_wind, label = "Average Measured-Forecasted", color = :green)
-plot!(forecasted_wind, label = "Forecasted", color = :orange)
-case_figures = "case_30"
-savefig(joinpath(results_folder_figures,case_figures,"Time_series_$(first_hour)_$(last_hour)_meas_avg_for.svg"))
-savefig(joinpath(results_folder_figures,case_figures,"Time_series_$(first_hour)_$(last_hour)_meas_avg_for.pdf"))
+plot!(measured_wind, label = "Forecasted", color = :orange)
 
+case_figures = "case_30"
+savefig(joinpath(results_folder_figures,case_figures,"Time_series_$(first_hour)_$(last_hour)_meas_avg_for_inversed.svg"))
+savefig(joinpath(results_folder_figures,case_figures,"Time_series_$(first_hour)_$(last_hour)_meas_avg_for_inversed.pdf"))
 
 
 # Uploading results
@@ -117,26 +117,6 @@ hourly_fc_adjusted         = JSON.parsefile(joinpath(results_folder,"case_30","s
 hourly_fc_measured         = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","hourly_fc_measured_$(first_hour)_$(last_hour).json"))
 
 
-sum(hourly_fc_measured["$hour"]["objective"] for hour in 1:24)
-sum(fc_one_sw_measured["$hour"]["objective"] for hour in 1:24)
-sum(fc_two_sw_measured["$hour"]["objective"] for hour in 1:24)
-sum(fc_one_topology_measured["$hour"]["objective"] for hour in 1:24)
-
-
-measured_wind_gen_1 = measured_wind*test_case_opf["gen"]["1"]["pmax"]
-measured_wind_gen_1_pg = [hourly_opf_measured["$h"]["solution"]["gen"]["1"]["pg"] for h in 1:n_hours]
-
-average_wind_gen_1 = average_wind*test_case_opf["gen"]["1"]["pmax"]
-average_wind_gen_1_pg = [hourly_opf_average["$h"]["solution"]["gen"]["1"]["pg"] for h in 1:n_hours]
-
-forecasted_wind_gen_1 = forecasted_wind*test_case_opf["gen"]["1"]["pmax"]
-forecasted_wind_gen_1_pg = [hourly_opf_forecasted["$h"]["solution"]["gen"]["1"]["pg"] for h in 1:n_hours]
-
-
-forecasted_wind_gen_1 - measured_wind_gen_1
-forecasted_wind_gen_1_pg - measured_wind_gen_1_pg
-
-
 #######################
 
 test_case_opf_replicate_one_scenario = _PM.replicate(test_case_opf, n_hours*one_scenario)
@@ -174,43 +154,53 @@ _SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_average,n_hours,one_scenari
 _SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_expected,n_hours,n_scenarios,scenario_wind_4)
 _SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_adjusted,n_hours,n_scenarios,scenario_wind_4_adjusted)
 
+test_case_opf_replicate_one_scenario = _PM.replicate(test_case_opf, n_hours*one_scenario)
+test_case_opf_mn_measured = deepcopy(test_case_opf_replicate_one_scenario)
+test_case_opf_mn_forecasted = deepcopy(test_case_opf_replicate_one_scenario)
+_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_measured,n_hours,one_scenario,scenario_wind_4)
+_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_forecasted,n_hours,one_scenario,scenario_wind_4)
+
 
 for i in 1:(n_hours*one_scenario)
     test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
     test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
     test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
     test_case_bs_mn_average["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*average_wind[i])
+    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
 end
 for i in 1:(n_hours*n_scenarios)
     test_case_bs_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_4["$i"]["samples_pu"])
     test_case_bs_mn_adjusted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_4_adjusted["$i"]["samples_pu"])
 end
 
-hourly_redispatch_measured = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_measured,hourly_bs_measured,hourly_fc_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_one_topology_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_topology_measured,fc_one_topology_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_one_sw_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_switching_action_measured,fc_one_sw_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_two_sw_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,two_switching_action_measured,fc_two_sw_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+[test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] for i in 1:n_hours]
+[test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] for i in 1:n_hours]
 
-hourly_redispatch_forecasted = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_measured,hourly_bs_forecasted,hourly_fc_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_one_topology_forecasted = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_topology_forecasted,fc_one_topology_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_one_sw_forecasted = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_switching_action_forecasted,fc_one_sw_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_two_sw_forecasted = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,two_switching_action_forecasted,fc_two_sw_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+hourly_redispatch_measured = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_forecasted,hourly_bs_measured,hourly_fc_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_one_topology_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,one_topology_measured,fc_one_topology_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_one_sw_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,one_switching_action_measured,fc_one_sw_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_two_sw_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,two_switching_action_measured,fc_two_sw_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 
-hourly_redispatch_average = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_measured,hourly_bs_average,hourly_fc_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_one_topology_average = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_topology_average,fc_one_topology_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_one_sw_average = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_switching_action_average,fc_one_sw_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-redispatch_two_sw_average = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,two_switching_action_average,fc_two_sw_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+hourly_redispatch_forecasted = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_forecasted,hourly_bs_forecasted,hourly_fc_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_one_topology_forecasted = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,one_topology_forecasted,fc_one_topology_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_one_sw_forecasted = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,one_switching_action_forecasted,fc_one_sw_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_two_sw_forecasted = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,two_switching_action_forecasted,fc_two_sw_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+
+hourly_redispatch_average = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_forecasted,hourly_bs_average,hourly_fc_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_one_topology_average = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,one_topology_average,fc_one_topology_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_one_sw_average = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,one_switching_action_average,fc_one_sw_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+redispatch_two_sw_average = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_forecasted,two_switching_action_average,fc_two_sw_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 
 # -> Use the stochastic version now
-hourly_redispatch_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_expected,hourly_bs_scenarios_4           ,hourly_fc_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-redispatch_one_topology_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_expected,one_topology_scenarios_4  ,fc_one_topology_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-redispatch_one_sw_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_expected,one_switching_action_scenarios_4,fc_one_sw_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-redispatch_two_sw_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_expected,two_switching_action_scenarios_4,fc_two_sw_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+hourly_redispatch_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_expected,hourly_bs_scenarios_4           ,hourly_fc_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+redispatch_one_topology_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_expected,one_topology_scenarios_4  ,fc_one_topology_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+redispatch_one_sw_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_expected,one_switching_action_scenarios_4,fc_one_sw_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+redispatch_two_sw_stochastic = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_expected,two_switching_action_scenarios_4,fc_two_sw_stochastic,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
 
-hourly_redispatch_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_adjusted,hourly_bs_scenarios_4_adjusted,                    hourly_fc_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-redispatch_one_topology_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_adjusted,one_topology_scenarios_4_adjusted  ,fc_one_topology_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-redispatch_one_sw_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_adjusted,one_switching_action_scenarios_4_adjusted,fc_one_sw_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-redispatch_two_sw_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_adjusted,two_switching_action_scenarios_4_adjusted,fc_two_sw_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+hourly_redispatch_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_adjusted,hourly_bs_scenarios_4_adjusted,                    hourly_fc_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+redispatch_one_topology_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_adjusted,one_topology_scenarios_4_adjusted  ,fc_one_topology_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+redispatch_one_sw_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_adjusted,one_switching_action_scenarios_4_adjusted,fc_one_sw_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+redispatch_two_sw_adjusted = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_forecasted,test_case_bs_mn_adjusted,two_switching_action_scenarios_4_adjusted,fc_two_sw_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
 
 ####################
 # -> OPF
@@ -282,11 +272,22 @@ function run_hourly_redispatch_opf_stochastic(grid, stochastic_grid, result_opf,
     return result_feasibility_checks
 end
 
-redispatch_opf_forecasted           = run_hourly_redispatch_opf(test_case_opf_mn_measured,hourly_opf_forecasted          ,ACPPowerModel,ipopt,s)
-redispatch_opf_measured             = run_hourly_redispatch_opf(test_case_opf_mn_measured,hourly_opf_measured            ,ACPPowerModel,ipopt,s)
-redispatch_opf_average              = run_hourly_redispatch_opf(test_case_opf_mn_measured,hourly_opf_average             ,ACPPowerModel,ipopt,s)
-redispatch_opf_scenarios_4          = run_hourly_redispatch_opf_stochastic(test_case_opf_mn_measured,test_case_bs_mn_expected,hourly_opf_scenarios_4         ,ACPPowerModel,ipopt,s)
-redispatch_opf_scenarios_4_adjusted = run_hourly_redispatch_opf_stochastic(test_case_opf_mn_measured,test_case_bs_mn_adjusted,hourly_opf_scenarios_4_adjusted,ACPPowerModel,ipopt,s)
+redispatch_opf_forecasted           = run_hourly_redispatch_opf(test_case_opf_mn_forecasted,hourly_opf_forecasted          ,ACPPowerModel,ipopt,s)
+redispatch_opf_measured             = run_hourly_redispatch_opf(test_case_opf_mn_forecasted,hourly_opf_measured            ,ACPPowerModel,ipopt,s)
+redispatch_opf_average              = run_hourly_redispatch_opf(test_case_opf_mn_forecasted,hourly_opf_average             ,ACPPowerModel,ipopt,s)
+redispatch_opf_scenarios_4          = run_hourly_redispatch_opf_stochastic(test_case_opf_mn_forecasted,test_case_bs_mn_expected,hourly_opf_scenarios_4         ,ACPPowerModel,ipopt,s)
+redispatch_opf_scenarios_4_adjusted = run_hourly_redispatch_opf_stochastic(test_case_opf_mn_forecasted,test_case_bs_mn_adjusted,hourly_opf_scenarios_4_adjusted,ACPPowerModel,ipopt,s)
+
+[hourly_opf_measured["$h"]["solution"]["gen"]["1"]["pg"] for h in 1:12]
+[hourly_opf_forecasted["$h"]["solution"]["gen"]["1"]["pg"] for h in 1:12]
+
+[redispatch_opf_forecasted["$h"]["solution"]["gen"]["1"]["pg_up"] for h in 1:12]
+[redispatch_opf_measured["$h"]["solution"]["gen"]["1"]["pg_up"] for h in 1:12]
+
+[test_case_opf_mn_forecasted["nw"]["$h"]["gen"]["1"]["pmax"] for h in 1:n_hours]
+[test_case_opf_mn_measured["nw"]["$h"]["gen"]["1"]["pmax"] for h in 1:n_hours]
+
+test_case_bs_mn_forecasted["nw"]["1"]["gen"]["1"]["pmax"]
 
 sum(redispatch_opf_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 sum(redispatch_opf_measured["$hour"]["objective"] for hour in 1:n_hours)
@@ -318,110 +319,9 @@ sum(hourly_redispatch_stochastic["$hour"]["objective"]*hourly_redispatch_stochas
 sum(hourly_redispatch_adjusted["$hour"]["objective"]*hourly_redispatch_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 sum(hourly_redispatch_measured["$hour"]["objective"] for hour in 1:n_hours)
 
-function print_gen_redispatch(grid,results,n_hours)
-    for hour in 1:n_hours
-        println("------------------------")
-        println("Hour: $hour")
-        println("Objective: $(results["$hour"]["objective"])")
-        println("------------------------")
-        for (g_id,g) in grid["gen"]
-            if results["$hour"]["solution"]["gen"][g_id]["pg_up"] > 10^(-4)
-                println("Generator $g_id: pg_up = $(results["$hour"]["solution"]["gen"][g_id]["pg_up"])")
-            end
-            if results["$hour"]["solution"]["gen"][g_id]["pg_down"] > 10^(-4)
-                println("Generator $g_id: pg_down = $(results["$hour"]["solution"]["gen"][g_id]["pg_down"])")
-            end
-        end
-    end
-end
-
-print_gen_redispatch(test_case_opf,redispatch_opf_forecasted,12)
-print_gen_redispatch(test_case_opf,hourly_redispatch_measured,n_hours)
-
-[redispatch_opf_forecasted["$h"]["solution"]["gen"]["1"]["pg_up"] for h in 1:n_hours]
-[redispatch_opf_forecasted["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:n_hours]
-
-
-redispatch_opf_forecasted["2"]["solution"]["gen"]["1"]["pg_up"]*test_case_opf["gen"]["1"]["cost"][1]
-redispatch_opf_forecasted["2"]["solution"]["gen"]["1"]["pg_down"]*test_case_opf["gen"]["1"]["cost"][1]
-
-redispatch_opf_forecasted["2"]["solution"]["gen"]["2"]["pg_up"]  *test_case_opf["gen"]["2"]["cost"][1]
-redispatch_opf_forecasted["2"]["solution"]["gen"]["2"]["pg_down"]*test_case_opf["gen"]["2"]["cost"][1]
-
-test_case_opf["gen"]["2"]["pmax"]
-hourly_opf_forecasted["12"]["solution"]["gen"]["2"]["pg"]
-redispatch_opf_scenarios_4["12"]["solution"]["gen"]["1"]["pg_up"]
-redispatch_opf_scenarios_4["12"]["solution"]["gen"]["1"]["pg_down"]  
-redispatch_opf_forecasted["12"]["solution"]["gen"]["2"]["pg_down"]
-
-
-using StatsBase
-
-solutions = [redispatch_opf_scenarios_4_adjusted["$h"]["termination_status"] for h in 1:(n_hours*n_scenarios)]
-
-countmap(solutions)
-
-#=
-pmax_measured   = [test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"] for i in 1:(n_hours*one_scenario)]
-pmax_forecasted = [test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] for i in 1:(n_hours*one_scenario)]
-pmax_average    = [test_case_bs_mn_average["nw"]["$i"]["gen"]["1"]["pmax"] for i in 1:(n_hours*one_scenario)]
-pmax_stochastic = []
-for i in 1:n_hours 
-    pmax_stochastic_scenarios = []
-    for s in 1:n_scenarios 
-        n = (i-1)*n_scenarios + s
-        push!(pmax_stochastic_scenarios,test_case_bs_mn_expected["nw"]["$n"]["gen"]["1"]["pmax"]*test_case_bs_mn_expected["nw"]["$n"]["probability"])
-    end
-    push!(pmax_stochastic,sum(pmax_stochastic_scenarios))
-end
-pmax_adjusted = []
-for i in 1:n_hours 
-    pmax_adjusted_scenarios = []
-    for s in 1:n_scenarios 
-        n = (i-1)*n_scenarios + s
-        push!(pmax_adjusted_scenarios,test_case_bs_mn_expected["nw"]["$n"]["gen"]["1"]["pmax"]*test_case_bs_mn_expected["nw"]["$n"]["probability"])
-    end
-    push!(pmax_adjusted,sum(pmax_adjusted_scenarios))
-end
-
-x_values_4 = []
-forecasted_values_4 = []
-first_hour_show = 1
-last_hour_show = 24
-for i in first_hour_show:last_hour_show
-    for s in 1:n_scenarios
-        l = (i - 1)*n_scenarios + s
-        push!(x_values_4,i)
-        push!(forecasted_values_4,forecasted_wind[i])
-    end
-end
-errors_4 = [scenario_wind_4["$i"]["error"] for i in 1:(n_scenarios*24)]
-forecast_4 = [forecasted_values_4[i]+scenario_wind_4["$i"]["error"] for i in 1:(n_scenarios*24)]
-probabilities_4 = [scenario_wind_4["$i"]["probability"] for i in 1:(n_scenarios*24)]
-probabilities_4 = round.(probabilities_4, digits=2)
-
-
-plot(pmax_measured   ,label = "Measured",ylims = (0.0,4.0), yticks = 0:0.5:3.0, xlabel = "Hour", ylabel = "Pmax (MW)", xticks = 1:24,color = :blue,grid = :none,legend = :topleft)
-plot!(pmax_forecasted,label = "Forecasted",color = :green)
-plot!(pmax_stochastic,label = "Stochastic",color = :orange)
-plot!(pmax_adjusted,label = "Adjusted",color = :orange)
-plot!(pmax_average,label = "Average Measured-Forecasted",color = :red)
-scatter!(pmax_measured,color = :blue,label = :none)
-scatter!(pmax_forecasted,color = :green,label = :none)
-scatter!(pmax_average,color = :red,label = :none)
-scatter!(x_values_4,forecast_4*test_case_opf["gen"]["1"]["pmax"],xticks = 1:1:24,label = :none,color = :orange)
-
-odd_numbers = [i for i in 1:(n_scenarios*24) if isodd(i)]
-even_numbers = [i for i in 1:(n_scenarios*24) if iseven(i)]
-=#
-#for i in 1:n_scenarios*24
-#    if i in odd_numbers
-#        annotate!(x_values_4[i]+0.5, forecast_4[i]*test_case_opf["gen"]["1"]["pmax"]+0.05, (probabilities_4[i], 6, :orange))
-#    elseif i in even_numbers
-#        annotate!(x_values_4[i]-0.5, forecast_4[i]*test_case_opf["gen"]["1"]["pmax"]+0.05, (probabilities_4[i], 6, :orange))
-#    end
-#end
-#display(current())
+#using StatsBase
+#solutions = [redispatch_opf_scenarios_4_adjusted["$h"]["termination_status"] for h in 1:(n_hours*n_scenarios)]
+#countmap(solutions)
 
 ################
 
@@ -488,37 +388,35 @@ sum(hourly_fc_adjusted["$hour"]["objective"]*hourly_fc_adjusted["$hour"]["probab
 
 ###########################################
 
-sum(hourly_opf_measured["$hour"]["objective"] for hour in 1:n_hours)      + sum(redispatch_opf_measured["$hour"]["objective"] for hour in 1:n_hours)
-sum(fc_one_sw_measured["$hour"]["objective"] for hour in 1:n_hours)       + sum(redispatch_one_sw_measured["$hour"]["objective"] for hour in 1:n_hours)
-sum(fc_two_sw_measured["$hour"]["objective"] for hour in 1:n_hours)       + sum(redispatch_two_sw_measured["$hour"]["objective"] for hour in 1:n_hours)
-sum(fc_one_topology_measured["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_topology_measured["$hour"]["objective"] for hour in 1:n_hours)
-sum(hourly_fc_measured["$hour"]["objective"] for hour in 1:n_hours)       + sum(hourly_redispatch_measured["$hour"]["objective"] for hour in 1:n_hours)
-
-
-
 sum(hourly_opf_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_opf_forecasted["$hour"]["objective"] for hour in 1:n_hours)
-sum(hourly_fc_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(hourly_redispatch_forecasted["$hour"]["objective"] for hour in 1:n_hours)
-sum(fc_one_topology_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_topology_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_one_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_two_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_two_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours)
+sum(fc_one_topology_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_topology_forecasted["$hour"]["objective"] for hour in 1:n_hours)
+sum(hourly_fc_forecasted["$hour"]["objective"] for hour in 1:n_hours) + sum(hourly_redispatch_forecasted["$hour"]["objective"] for hour in 1:n_hours)
+
+sum(hourly_opf_measured["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_opf_measured["$hour"]["objective"] for hour in 1:n_hours)
+sum(fc_one_sw_measured["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_sw_measured["$hour"]["objective"] for hour in 1:n_hours)
+sum(fc_two_sw_measured["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_two_sw_measured["$hour"]["objective"] for hour in 1:n_hours)
+sum(fc_one_topology_measured["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_topology_measured["$hour"]["objective"] for hour in 1:n_hours)
+sum(hourly_fc_measured["$hour"]["objective"] for hour in 1:n_hours) + sum(hourly_redispatch_measured["$hour"]["objective"] for hour in 1:n_hours)
 
 sum(hourly_opf_average["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_opf_average["$hour"]["objective"] for hour in 1:n_hours)
-sum(hourly_fc_average["$hour"]["objective"] for hour in 1:n_hours) + sum(hourly_redispatch_average["$hour"]["objective"] for hour in 1:n_hours)
-sum(fc_one_topology_average["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_topology_average["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_one_sw_average["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_sw_average["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_two_sw_average["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_two_sw_average["$hour"]["objective"] for hour in 1:n_hours)
+sum(fc_one_topology_average["$hour"]["objective"] for hour in 1:n_hours) + sum(redispatch_one_topology_average["$hour"]["objective"] for hour in 1:n_hours)
+sum(hourly_fc_average["$hour"]["objective"] for hour in 1:n_hours) + sum(hourly_redispatch_average["$hour"]["objective"] for hour in 1:n_hours)
 
 sum(hourly_opf_scenarios_4["$hour"]["objective"]*hourly_redispatch_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_opf_scenarios_4["$hour"]["objective"]*hourly_redispatch_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
-sum(hourly_fc_stochastic["$hour"]["objective"]*hourly_fc_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(hourly_redispatch_stochastic["$hour"]["objective"]*hourly_redispatch_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
-sum(fc_one_topology_stochastic["$hour"]["objective"]*fc_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_topology_stochastic["$hour"]["objective"]*redispatch_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 sum(fc_one_sw_stochastic["$hour"]["objective"]*fc_one_sw_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_sw_stochastic["$hour"]["objective"]*redispatch_one_sw_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 sum(fc_two_sw_stochastic["$hour"]["objective"]*fc_two_sw_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_two_sw_stochastic["$hour"]["objective"]*redispatch_two_sw_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
+sum(fc_one_topology_stochastic["$hour"]["objective"]*fc_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_topology_stochastic["$hour"]["objective"]*redispatch_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
+sum(hourly_fc_stochastic["$hour"]["objective"]*hourly_fc_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(hourly_redispatch_stochastic["$hour"]["objective"]*hourly_redispatch_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 
 sum(hourly_opf_scenarios_4_adjusted["$hour"]["objective"]*hourly_redispatch_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_opf_scenarios_4_adjusted["$hour"]["objective"]*hourly_redispatch_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
-sum(hourly_fc_adjusted["$hour"]["objective"]*hourly_fc_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(hourly_redispatch_adjusted["$hour"]["objective"]*hourly_redispatch_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
-sum(fc_one_topology_adjusted["$hour"]["objective"]*fc_one_topology_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_topology_adjusted["$hour"]["objective"]*redispatch_one_topology_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 sum(fc_one_sw_adjusted["$hour"]["objective"]*fc_one_sw_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_sw_adjusted["$hour"]["objective"]*redispatch_one_sw_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 sum(fc_two_sw_adjusted["$hour"]["objective"]*fc_two_sw_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_two_sw_adjusted["$hour"]["objective"]*redispatch_two_sw_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
+sum(fc_one_topology_adjusted["$hour"]["objective"]*fc_one_topology_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_topology_adjusted["$hour"]["objective"]*redispatch_one_topology_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
+sum(hourly_fc_adjusted["$hour"]["objective"]*hourly_fc_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(hourly_redispatch_adjusted["$hour"]["objective"]*hourly_redispatch_adjusted["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
 
 
 sum(redispatch_opf_scenarios_4_adjusted["$hour"]["objective"] for hour in 1:(n_hours*n_scenarios))
@@ -538,3 +436,35 @@ objs = [redispatch_opf_scenarios_4_adjusted["$hour"]["objective"] for hour in 1:
 [redispatch_opf_average["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours)]
 [redispatch_opf_scenarios_4["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours*n_scenarios)]
 [redispatch_opf_scenarios_4_adjusted["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours*n_scenarios)]
+
+######################################################
+
+function print_gen_redispatch(grid,results,n_hours)
+    for hour in 1:n_hours
+        println("------------------------")
+        println("Hour: $hour")
+        println("Objective: $(results["$hour"]["objective"])")
+        println("------------------------")
+        for (g_id,g) in grid["gen"]
+            if results["$hour"]["solution"]["gen"][g_id]["pg_up"] > 10^(-4)
+                println("Generator $g_id: pg_up = $(results["$hour"]["solution"]["gen"][g_id]["pg_up"])")
+            end
+            if results["$hour"]["solution"]["gen"][g_id]["pg_down"] > 10^(-4)
+                println("Generator $g_id: pg_down = $(results["$hour"]["solution"]["gen"][g_id]["pg_down"])")
+            end
+        end
+    end
+end
+
+print_gen_redispatch(test_case_opf,redispatch_opf_forecasted,1)
+print_gen_redispatch(test_case_opf,redispatch_one_sw_forecasted,1)
+print_gen_redispatch(test_case_opf,hourly_redispatch_forecasted,1)
+print_gen_redispatch(test_case_opf,redispatch_one_topology_forecasted,1)
+
+
+fc_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg"]
+hourly_opf_forecasted["1"]["solution"]["gen"]["1"]["pg"]
+forecasted_wind[1]*test_case_opf["gen"]["1"]["pmax"]
+
+redispatch_opf_forecasted["1"]["solution"]["gen"]["1"]["pg_down"]
+fc_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg"] - redispatch_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg_down"]

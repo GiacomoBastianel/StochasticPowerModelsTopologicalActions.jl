@@ -316,3 +316,16 @@ function constraint_power_balance_ac_redispatch(pm::_PM.AbstractPowerModel, n::I
     cstr_p = JuMP.@constraint(pm.model, sum(p[a] for a in bus_arcs) + sum(pconv_grid_ac[c] for c in bus_convs_ac)  == sum(pg_start[g] for g in bus_gens) + sum(pg_up[g] for g in bus_gens) - sum(pg_down[g] for g in bus_gens) - sum(pd[d] for d in bus_loads) - sum(gs[s] for s in bus_shunts)*vm^2)
     cstr_q = JuMP.@constraint(pm.model, sum(q[a] for a in bus_arcs) + sum(qconv_grid_ac[c] for c in bus_convs_ac)  == sum(qg_start[g] for g in bus_gens) + sum(qg_up[g] for g in bus_gens) - sum(qg_down[g] for g in bus_gens) - sum(qd[d] for d in bus_loads) + sum(bs[s] for s in bus_shunts)*vm^2)
 end
+
+function constraint_gen_redispatch(pm::_PM.AbstractPowerModel, n::Int,  i::Int, pg_start, qg_start,pmax,qmax)
+    pg_up = _PM.var(pm, n,  :pg_up, i)
+    qg_up = _PM.var(pm, n,  :qg_up, i)
+    pg_down = _PM.var(pm, n,  :pg_down, i)
+    qg_down = _PM.var(pm, n,  :qg_down, i)
+
+    JuMP.@constraint(pm.model, 
+        pg_start + pg_up - pg_down <= pmax)
+
+    JuMP.@constraint(pm.model, 
+        qg_start + qg_up - qg_down <= qmax)
+end

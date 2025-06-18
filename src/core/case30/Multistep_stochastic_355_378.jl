@@ -88,7 +88,7 @@ for (g_id,g) in feasibility_check_pf["gen"]
 end
 #########################################################################################
 # Add dimensions for stochastic part
-n_scenarios = 8
+n_scenarios = 4
 n_hours = 24
 one_scenario = 1
 hours = collect(1:n_hours)
