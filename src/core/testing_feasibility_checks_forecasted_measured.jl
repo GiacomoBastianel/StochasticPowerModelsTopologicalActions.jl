@@ -19,7 +19,6 @@ juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt
 first_hour = 355
 last_hour  = 378
 
-
 #########################################################################################
 ## Processing input data
 s = Dict("output" => Dict("branch_flows" => true), "conv_losses_mp" => true)
@@ -48,89 +47,24 @@ test_case_bs = deepcopy(test_case_opf)
 splitted_bus_ac = 6
 test_case_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_AC_grid(test_case,splitted_bus_ac)
 
-
 #########################################################################################
 # Uploading time series
 measured_wind = JSON.parsefile(joinpath(input_folder,"case30","measured_wind_$(first_hour)_$(last_hour)_modified.json"))
-average_wind = JSON.parsefile(joinpath(input_folder,"case30","average_wind_$(first_hour)_$(last_hour)_modified.json"))
 forecasted_wind = JSON.parsefile(joinpath(input_folder,"case30","forecasted_wind_hours_$(first_hour)_$(last_hour)_modified.json"))
-scenario_wind_4 = JSON.parsefile(joinpath(input_folder,"case30","scenario_wind_4_$(first_hour)_$(last_hour)_modified.json"))
-scenario_wind_4_adjusted = JSON.parsefile(joinpath(input_folder,"case30","scenario_wind_4_$(first_hour)_$(last_hour)_adjusted.json"))
-scenario_wind_8 = JSON.parsefile(joinpath(input_folder,"case30","scenario_wind_8_$(first_hour)_$(last_hour)_modified.json"))
-
-#=
-plot(measured_wind,label = "Measured")
-plot!(average_wind, label = "Average Measured-Forecasted")
-plot!(forecasted_wind, label = "Forecasted")
-
-measured_wind_gen_1 = measured_wind*test_case_opf["gen"]["1"]["pmax"]
-average_wind_gen_1 = average_wind*test_case_opf["gen"]["1"]["pmax"]
-forecasted_wind_gen_1 = forecasted_wind*test_case_opf["gen"]["1"]["pmax"]
-=#
 
 # Uploading results
 hourly_bs_forecasted  = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_forecasted_$(first_hour)_$(last_hour).json"))
 hourly_bs_measured    = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_measured_$(first_hour)_$(last_hour).json"))
-hourly_bs_average   = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_average_$(first_hour)_$(last_hour).json"))
-hourly_bs_scenarios_4 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"))
-hourly_bs_scenarios_4_adjusted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_stochastic_4_scenarios_adjusted_$(first_hour)_$(last_hour).json"))
-
-n_scenarios_6 = 6
-
 
 one_topology_forecasted  = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_forecasted_$(first_hour)_$(last_hour).json"))
 one_topology_measured    = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_measured_$(first_hour)_$(last_hour).json"))
-one_topology_average     = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_average_$(first_hour)_$(last_hour).json"))
-one_topology_scenarios_4 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"))
-one_topology_scenarios_4_adjusted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_adjusted_4_scenarios_$(first_hour)_$(last_hour).json"))
 
 one_switching_action_forecasted  = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","One_maximum_actions_24_hours_forecasted_$(first_hour)_$(last_hour).json"))
 one_switching_action_measured    = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","One_maximum_actions_24_hours_measured_$(first_hour)_$(last_hour).json"))
-one_switching_action_average     = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","One_maximum_actions_24_hours_average_$(first_hour)_$(last_hour).json"))
-one_switching_action_scenarios_4 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","One_maximum_actions_24_hours_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"))
-one_switching_action_scenarios_4_adjusted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","One_maximum_actions_24_hours_adjusted_$(first_hour)_$(last_hour).json"))
 
 two_switching_action_forecasted  = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Two_maximum_actions_24_hours_forecasted_$(first_hour)_$(last_hour).json"))
 two_switching_action_measured    = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Two_maximum_actions_24_hours_measured_$(first_hour)_$(last_hour).json"))
-two_switching_action_average     = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Two_maximum_actions_24_hours_average_$(first_hour)_$(last_hour).json"))
-two_switching_action_scenarios_4 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Two_maximum_actions_24_hours_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"))
-two_switching_action_scenarios_4_adjusted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Two_maximum_actions_24_hours_adjusted_$(first_hour)_$(last_hour).json"))
 
-#=
-function print_switch_results(result, grid, nw)
-    switches = []
-    for i in 1:length(grid["switch"])
-        if !haskey(grid["switch"]["$i"],"auxiliary")
-            push!(switches,result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"])
-            println(i," f_bus ",grid["switch"]["$i"]["f_bus"]," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"])
-        else
-            push!(switches,result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"])
-            println(i," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"]," auxiliary ", grid["switch"]["$i"]["auxiliary"], " original ", grid["switch"]["$i"]["original"])
-        end
-    end
-    return switches
-end
-
-switches_one_topology_forecasted = print_switch_results(one_topology_forecasted, test_case_bs, 1)
-switches_one_topology_measured = print_switch_results(one_topology_measured, test_case_bs, 1)
-switches_one_topology_average  = print_switch_results(one_topology_average , test_case_bs, 1)
-switches_one_topology_scenarios_4 = print_switch_results(one_topology_scenarios_4, test_case_bs, 1)
-switches_one_topology_scenarios_4_adjusted = print_switch_results(one_topology_scenarios_4_adjusted, test_case_bs, 1)
-
-switches_one_topology_forecasted = print_switch_results(one_topology_forecasted, test_case_bs, 1)
-switches_one_switching_action_forecasted = print_switch_results(one_switching_action_forecasted, test_case_bs, 1)
-switches_two_switching_action_forecasted  = print_switch_results(two_switching_action_forecasted , test_case_bs, 1)
-
-switches = Dict{String,Any}()
-switches["one_topology"] = Dict{String,Any}()
-switches["one_sw"] = Dict{String,Any}()
-switches["two_sw"] = Dict{String,Any}()
-for i in 1:n_hours
-    switches["one_topology"]["$i"] = print_switch_results(one_topology_forecasted, test_case_bs, i)
-    switches["one_sw"]["$i"] = print_switch_results(one_switching_action_forecasted, test_case_bs, i)
-    switches["two_sw"]["$i"] = print_switch_results(two_switching_action_forecasted, test_case_bs, i)
-end
-=#
 #######################
 # Adding costs to the busbar couplers
 for sw_id in 1:length(extremes_ZILs_ac)
@@ -139,54 +73,39 @@ end
 
 n_hours = 24
 n_scenarios = 4
-n_scenarios_6 = 6
 one_scenario = 1
 
 #########################################################################################
 
-test_case_opf_replicate_one_scenario = _PM.replicate(test_case_opf, n_hours*one_scenario)
-test_case_opf_replicate_one_scenario_forecasted = _PM.replicate(test_case_opf, n_hours*one_scenario)
+test_case_opf_replicate_one_scenario_measured = deepcopy(_PM.replicate(test_case_opf, n_hours*one_scenario))
+test_case_opf_replicate_one_scenario_forecasted = deepcopy(_PM.replicate(test_case_opf, n_hours*one_scenario))
 
-test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours*n_scenarios)
-test_case_bs_replicate_one_scenario = _PM.replicate(test_case_bs, n_hours*one_scenario)
-test_case_bs_replicate_6 = _PM.replicate(test_case_bs, n_hours*n_scenarios_6)
+test_case_bs_replicate = deepcopy(_PM.replicate(test_case_bs, n_hours*n_scenarios))
+test_case_bs_replicate_one_scenario = deepcopy(_PM.replicate(test_case_bs, n_hours*one_scenario))
+
+test_case_bs_replicate = deepcopy(_PM.replicate(test_case_bs, n_hours*n_scenarios))
+test_case_bs_replicate_one_scenario_forecasted = deepcopy(_PM.replicate(test_case_bs, n_hours*one_scenario))
 
 test_case_bs_mn_measured = deepcopy(test_case_bs_replicate_one_scenario)
-test_case_bs_mn_forecasted = deepcopy(test_case_bs_replicate_one_scenario)
-test_case_bs_mn_average  = deepcopy(test_case_bs_replicate_one_scenario)
+test_case_bs_mn_forecasted = deepcopy(test_case_bs_replicate_one_scenario_forecasted)
+
 test_case_opf_mn_measured = deepcopy(test_case_opf_replicate_one_scenario)
 test_case_opf_mn_forecasted = deepcopy(test_case_opf_replicate_one_scenario)
-test_case_opf_mn_average = deepcopy(test_case_opf_replicate_one_scenario)
-
-test_case_bs_mn_expected = deepcopy(test_case_bs_replicate)
-test_case_bs_mn_adjusted = deepcopy(test_case_bs_replicate)
-test_case_bs_mn_expected_6  = deepcopy(test_case_bs_replicate_6)
 
 _SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_measured,n_hours,one_scenario,scenario_wind_4)
 _SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_forecasted,n_hours,one_scenario,scenario_wind_4)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_average,n_hours,one_scenario,scenario_wind_4)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_expected,n_hours,n_scenarios,scenario_wind_4)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_adjusted,n_hours,n_scenarios,scenario_wind_4_adjusted)
+
 _SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_forecasted,n_hours,one_scenario,scenario_wind_4)
 _SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_measured,n_hours,one_scenario,scenario_wind_4)
-_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_average,n_hours,one_scenario,scenario_wind_4)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_expected_6,n_hours,n_scenarios_6,scenarios_wind_6)
-
 
 # SOMETHING FISHY IS HAPPENING HERE
 # ALL THE SIMULATIONS HAVE THE SAME RESULTS
 
 for i in 1:(n_hours*one_scenario)
-    test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
-    test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
-    test_case_bs_mn_average["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*average_wind[i])
-    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
-    test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]     = deepcopy(test_case_opf_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
-    test_case_opf_mn_average["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_opf_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*average_wind[i])
-end
-for i in 1:(n_hours*n_scenarios)
-    test_case_bs_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_4["$i"]["samples_pu"])
-    test_case_bs_mn_adjusted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_4_adjusted["$i"]["samples_pu"])
+    test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
+    test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
+    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
+    test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]     = deepcopy(test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
 end
 
 # Running feasibility checks
@@ -282,7 +201,7 @@ fc_one_sw_measured = run_feasibility_checks_per_hour_one_topology(fc_one_sw_test
 fc_two_sw_measured = run_feasibility_checks_per_hour_one_topology(fc_two_sw_test_case_bs_mn_measured,two_switching_action_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 
 hourly_fc_forecasted = run_feasibility_checks_per_hour(hourly_fc_test_case_bs_mn_forecasted,hourly_bs_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-fc_one_topology_forecasted = run_feasibility_checks_per_hour_one_topology(fc_one_topology_test_case_bs_mn_forecasted,one_topology_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+fc_one_topology_forecasted, grid_one_topology = run_feasibility_checks_per_hour_one_topology_fixing(fc_one_topology_test_case_bs_mn_forecasted,one_topology_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 fc_one_sw_forecasted = run_feasibility_checks_per_hour_one_topology(fc_one_sw_test_case_bs_mn_forecasted,one_switching_action_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 fc_two_sw_forecasted = run_feasibility_checks_per_hour_one_topology(fc_two_sw_test_case_bs_mn_forecasted,two_switching_action_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 
@@ -292,7 +211,7 @@ sum(hourly_fc_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_one_topology_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_two_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 
-#=
+
 function compute_total_pg_cost(grid,results,n_hours)
     cost_vector = []
     for hour in 1:n_hours
@@ -315,40 +234,247 @@ end
 
 cost_vector_hourly_bs_forecasted = compute_total_pg_cost(test_case_opf,hourly_bs_forecasted,n_hours)
 cost_vector_one_topology_forecasted = compute_total_pg_cost(test_case_opf,one_topology_forecasted,n_hours)
-cost_vector_one_sw_forecasted       = compute_total_pg_cost(test_case_opf,one_sw_forecasted,n_hours)
-cost_vector_two_sw_forecasted       = compute_total_pg_cost(test_case_opf,two_sw_forecasted,n_hours)
-=#
+cost_vector_one_sw_forecasted       = compute_total_pg_cost(test_case_opf,one_switching_action_forecasted,n_hours)
+cost_vector_two_sw_forecasted       = compute_total_pg_cost(test_case_opf,two_switching_action_forecasted,n_hours)
 
-hourly_fc_average = run_feasibility_checks_per_hour(test_case_bs_mn_average,hourly_bs_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-fc_one_topology_average = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_average,one_topology_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-fc_one_sw_average = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_average,one_switching_action_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-fc_two_sw_average = run_feasibility_checks_per_hour_one_topology(test_case_bs_mn_average,two_switching_action_average,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
-
-# -> Use the stochastic version now
-hourly_fc_stochastic = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_expected,hourly_bs_scenarios_4,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-fc_one_topology_stochastic = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_expected,one_topology_scenarios_4,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-fc_one_sw_stochastic = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_expected,one_switching_action_scenarios_4,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-fc_two_sw_stochastic = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_expected,two_switching_action_scenarios_4,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-
-hourly_fc_adjusted = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_adjusted,hourly_bs_scenarios_4_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-fc_one_topology_adjusted = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_adjusted,one_topology_scenarios_4_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-fc_one_sw_adjusted = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_adjusted,one_switching_action_scenarios_4_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
-fc_two_sw_adjusted = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_adjusted,two_switching_action_scenarios_4_adjusted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios)
+fc_cost_vector_hourly_bs_forecasted    = compute_total_pg_cost(test_case_opf,hourly_fc_forecasted,n_hours)
+fc_cost_vector_one_topology_forecasted = compute_total_pg_cost(test_case_opf,fc_one_topology_forecasted,n_hours)
+fc_cost_vector_one_sw_forecasted       = compute_total_pg_cost(test_case_opf,fc_one_sw_forecasted,n_hours)
+fc_cost_vector_two_sw_forecasted       = compute_total_pg_cost(test_case_opf,fc_two_sw_forecasted,n_hours)
 
 ##################
 
-opf_measured = run_hourly_opf(test_case_opf_mn_measured,ACPPowerModel,ipopt,n_hours)
+opf_measured   = run_hourly_opf(test_case_opf_mn_measured,ACPPowerModel,ipopt,n_hours)
 opf_forecasted = run_hourly_opf(test_case_opf_mn_forecasted,ACPPowerModel,ipopt,n_hours)
-opf_average = run_hourly_opf(test_case_opf_mn_average,ACPPowerModel,ipopt,n_hours)
-opf_measured = run_hourly_opf(test_case_opf_mn_measured,ACPPowerModel,ipopt,n_hours)
-opf_measured = run_hourly_opf(test_case_opf_mn_measured,ACPPowerModel,ipopt,n_hours)
+
+fc_cost_vector_opf_measured   = compute_total_pg_cost(test_case_opf,hourly_fc_forecasted,n_hours)
+fc_cost_vector_opf_forecasted = compute_total_pg_cost(test_case_opf,hourly_fc_forecasted,n_hours)
+
 
 sum(opf_measured["$hour"]["objective"] for hour in 1:n_hours)
 sum(opf_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 
-[opf_forecasted["$hour"]["solution"]["gen"]["1"]["pg"] for hour in 1:n_hours]
-
 ######################
+function run_feasibility_checks_per_hour_one_topology_fixing(grid_hour,grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings)
+    result_feasibility_checks = Dict{String,Any}()
+    for hour in 1:grid["hours"]
+        result_feasibility_checks["$hour"] = Dict{String,Any}()
+        feasibility_check = deepcopy(grid["nw"]["$hour"])
+        feasibility_check_input = deepcopy(grid["nw"]["$hour"])
+        prepare_AC_feasibility_check_stochastic(result_bs["solution"]["nw"]["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+        result_feasibility_checks["$hour"] = _PM.solve_opf(feasibility_check,model,optimizer; setting = settings)
+        grid_hour["$hour"] = deepcopy(feasibility_check)
+    end
+    return result_feasibility_checks
+end
+
+function prepare_AC_feasibility_check_stochastic(result_dict, input_dict, input_ac_check, switch_couples, extremes_dict,input_base)
+    orig_buses = maximum(parse.(Int, keys(input_base["bus"]))) # maximum value before splitting (in case the buses are not in numerical order)
+    println("DIOBOIAAAAA")
+    for (sw_id,sw) in input_dict["switch"]
+        if !haskey(sw,"auxiliary")
+            println("SWITCH $sw_id, BUS from $(sw["f_bus"]), BUS to $(sw["t_bus"])")
+            if result_dict["switch"][sw_id]["status"] >= 0.9 # Just reconnecting stuff
+                println("Switch $sw_id is closed, Connecting everything back, no busbar splitting on bus $(sw["bus_split"])")
+                for l in keys(switch_couples)
+                    #if haskey(switch_couples,sw_id) && switch_couples[l]["bus_split"] == sw["bus_split"] -> wrong, you are checking the ZIL sw here
+                    if switch_couples[l]["bus_split"] == sw["bus_split"] # coupling the switch couple to their split bus, if it closed, just connect everything back to the original switch
+                        println("SWITCH COUPLE IS $l")
+
+                        switch_t = deepcopy(input_dict["switch"]["$(switch_couples["$l"]["t_sw"])"])
+                        switch_f = deepcopy(input_dict["switch"]["$(switch_couples["$l"]["f_sw"])"])
+                        
+                        if switch_t["t_bus"] == switch_couples[l]["bus_split"]
+                            aux_t = switch_t["auxiliary"]
+                            orig_t = switch_t["original"]
+                            println("Element $aux_t $orig_t")
+                            if aux_t == "gen"
+                                input_ac_check["gen"]["$(orig_t)"]["gen_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                delete!(input_ac_check["bus"],input_ac_check["gen"]["$(orig_t)"]["gen_bus"])
+                                println("Element $aux_t $orig_t connected to $(input_ac_check["gen"]["$(orig_t)"]["gen_bus"])")
+                            elseif aux_t == "load"
+                                input_ac_check["load"]["$(orig_t)"]["load_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                delete!(input_ac_check["bus"],input_ac_check["load"]["$(orig_t)"]["load_bus"])
+                                println("Element $aux_t $orig_t connected to $(input_ac_check["load"]["$(orig_t)"]["load_bus"])")
+                            elseif aux_t == "convdc"
+                                input_ac_check["convdc"]["$(orig_t)"]["busac_i"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                delete!(input_ac_check["bus"],input_ac_check["convdc"]["$(orig_t)"]["busac_i"])
+                                println("Element $aux_t $orig_t connected to $(input_ac_check["convdc"]["$(orig_t)"]["busac_i"])")
+                            elseif aux_t == "branch" 
+                                if input_ac_check["branch"]["$(orig_t)"]["f_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                    input_ac_check["branch"]["$(orig_t)"]["f_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_t)"]["f_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["branch"]["$(orig_t)"]["f_bus"])")
+                                elseif input_ac_check["branch"]["$(orig_t)"]["t_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                    input_ac_check["branch"]["$(orig_t)"]["t_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_t)"]["t_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["branch"]["$(orig_t)"]["t_bus"])")
+                                end
+                            end
+                        elseif switch_f["t_bus"] == switch_couples[l]["bus_split"]
+                            aux_f = switch_f["auxiliary"]
+                            orig_f = switch_f["original"]
+                            println("Element $aux_f $orig_f")
+                            if aux_f == "gen"
+                                input_ac_check["gen"]["$(orig_f)"]["gen_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                delete!(input_ac_check["bus"],input_ac_check["gen"]["$(orig_f)"]["gen_bus"])
+                                println("Element $aux_f $orig_f connected to $(input_ac_check["gen"]["$(orig_f)"]["gen_bus"])")
+                            elseif aux_f == "load"
+                                input_ac_check["load"]["$(orig_f)"]["load_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                delete!(input_ac_check["bus"],input_ac_check["load"]["$(orig_f)"]["load_bus"])
+                                println("Element $aux_f $orig_f connected to $(input_ac_check["load"]["$(orig_f)"]["load_bus"])")
+                            elseif aux_f == "convdc"
+                                input_ac_check["convdc"]["$(orig_f)"]["busac_i"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                delete!(input_ac_check["bus"],input_ac_check["convdc"]["$(orig_f)"]["busac_i"])
+                                println("Element $aux_f $orig_f connected to $(input_ac_check["convdc"]["$(orig_f)"]["busac_i"])")
+                            elseif aux_f == "branch" 
+                                if input_ac_check["branch"]["$(orig_f)"]["f_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                    input_ac_check["branch"]["$(orig_f)"]["f_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_f)"]["f_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["branch"]["$(orig_f)"]["f_bus"])")
+                                elseif input_ac_check["branch"]["$(orig_f)"]["t_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                    input_ac_check["branch"]["$(orig_f)"]["t_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_f)"]["t_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["branch"]["$(orig_f)"]["t_bus"])")
+                                end
+                            end
+                        end
+                    end
+                end
+            elseif result_dict["switch"][sw_id]["status"] <= 0.1 # Connect elements to the right bus
+                println("Switch $sw_id is open, busbar splitting on bus $(sw["bus_split"])")
+                delete!(input_ac_check["switch"],sw_id)
+                for l in keys(switch_couples)
+                    if switch_couples[l]["bus_split"] == sw["bus_split"] # coupling the switch couple to their split bus
+                        println("SWITCH COUPLE IS $l")
+                            switch_t = deepcopy(input_dict["switch"]["$(switch_couples["$l"]["t_sw"])"]) 
+                            aux_t = switch_t["auxiliary"]
+                            orig_t = switch_t["original"]
+                            println("Element $aux_t $orig_t")
+                            if result_dict["switch"]["$(switch_t["index"])"]["status"] <= 0.1
+                                println("Deleting switch $(switch_t["index"])")
+                                delete!(input_ac_check["switch"],"$(switch_t["index"])")
+                            elseif result_dict["switch"]["$(switch_t["index"])"]["status"] >= 0.9
+                                if aux_t == "gen"
+                                    input_ac_check["gen"]["$(orig_t)"]["gen_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                    delete!(input_ac_check["bus"],input_ac_check["gen"]["$(orig_t)"]["gen_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["gen"]["$(orig_t)"]["gen_bus"])")
+                                elseif aux_t == "load"
+                                    input_ac_check["load"]["$(orig_t)"]["load_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["load"]["$(orig_t)"]["load_bus"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["load"]["$(orig_t)"]["load_bus"])")
+                                elseif aux_t == "convdc"
+                                    input_ac_check["convdc"]["$(orig_t)"]["busac_i"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["convdc"]["$(orig_t)"]["busac_i"])
+                                    println("Element $aux_t $orig_t connected to $(input_ac_check["convdc"]["$(orig_t)"]["busac_i"])")
+                                elseif aux_t == "branch" 
+                                    if input_ac_check["branch"]["$(orig_t)"]["f_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                        input_ac_check["branch"]["$(orig_t)"]["f_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                        delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_t)"]["f_bus"])
+                                        println("Element $aux_t $orig_t connected to $(input_ac_check["branch"]["$(orig_t)"]["f_bus"])")
+                                    elseif input_ac_check["branch"]["$(orig_t)"]["t_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["t_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                        input_ac_check["branch"]["$(orig_t)"]["t_bus"] = deepcopy(input_dict["switch"]["$(switch_t["index"])"]["t_bus"])
+                                        delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_t)"]["t_bus"])
+                                        println("Element $aux_t $orig_t connected to $(input_ac_check["branch"]["$(orig_t)"]["t_bus"])")
+                                    end
+                                end
+                            end
+                        
+
+                            switch_f = deepcopy(input_dict["switch"]["$(switch_couples["$l"]["f_sw"])"]) 
+                            aux_f = switch_f["auxiliary"]
+                            orig_f = switch_f["original"]
+                            println("Element $aux_f $orig_f")
+                            if result_dict["switch"]["$(switch_f["index"])"]["status"] <= 0.1
+                                println("Deleting switch $(switch_f["index"])")
+                                delete!(input_ac_check["switch"],"$(switch_f["index"])")
+                            elseif result_dict["switch"]["$(switch_f["index"])"]["status"] >= 0.9
+                                if aux_f == "gen"
+                                    input_ac_check["gen"]["$(orig_f)"]["gen_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"]) # here it needs to be the bus of the switch
+                                    delete!(input_ac_check["bus"],input_ac_check["gen"]["$(orig_f)"]["gen_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["gen"]["$(orig_f)"]["gen_bus"])")
+                                elseif aux_f == "load"
+                                    input_ac_check["load"]["$(orig_f)"]["load_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["load"]["$(orig_f)"]["load_bus"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["load"]["$(orig_f)"]["load_bus"])")
+                                elseif aux_f == "convdc"
+                                    input_ac_check["convdc"]["$(orig_f)"]["busac_i"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                    delete!(input_ac_check["bus"],input_ac_check["convdc"]["$(orig_f)"]["busac_i"])
+                                    println("Element $aux_f $orig_f connected to $(input_ac_check["convdc"]["$(orig_f)"]["busac_i"])")
+                                elseif aux_f == "branch" 
+                                    if input_ac_check["branch"]["$(orig_f)"]["f_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"] # useful if both ends of a branch are busbars being split
+                                        input_ac_check["branch"]["$(orig_f)"]["f_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                        delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_f)"]["f_bus"])
+                                        println("Element $aux_f $orig_f connected to $(input_ac_check["branch"]["$(orig_f)"]["f_bus"])")
+                                    elseif input_ac_check["branch"]["$(orig_f)"]["t_bus"] > orig_buses && input_dict["switch"]["$(switch_couples["$l"]["f_sw"])"]["bus_split"] == switch_couples[l]["bus_split"]
+                                        input_ac_check["branch"]["$(orig_f)"]["t_bus"] = deepcopy(input_dict["switch"]["$(switch_f["index"])"]["t_bus"])
+                                        delete!(input_ac_check["bus"],input_ac_check["branch"]["$(orig_f)"]["t_bus"])
+                                        println("Element $aux_f $orig_f connected to $(input_ac_check["branch"]["$(orig_f)"]["t_bus"])")
+                                    end
+                                end
+                            end
+                        #end
+                    end
+                end
+            end
+            input_ac_check["switch"] = Dict{String,Any}()
+            input_ac_check["switch_couples"] = Dict{String,Any}()
+        end
+    end
+end
+
+grid_one_topology = Dict{String,Any}()
+fc_one_topology_forecasted = run_feasibility_checks_per_hour_one_topology_fixing(grid_one_topology,fc_one_topology_test_case_bs_mn_forecasted,one_topology_forecasted,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
+
+
+fc_one_topology_forecasted["1"]
+
+fc_one_topology_test_case_bs_mn_forecasted["nw"]["1"]
+
+function print_switch_results(result, grid, nw)
+    switches = []
+    for i in 1:length(grid["switch"])
+        if !haskey(grid["switch"]["$i"],"auxiliary")
+            push!(switches,result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"])
+            println(i," f_bus ",grid["switch"]["$i"]["f_bus"]," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"])
+        else
+            push!(switches,result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"])
+            println(i," t_bus ",grid["switch"]["$i"]["t_bus"]," status ", result["solution"]["nw"]["$nw"]["switch"]["$i"]["status"]," auxiliary ", grid["switch"]["$i"]["auxiliary"], " original ", grid["switch"]["$i"]["original"])
+        end
+    end
+    return switches
+end
+print_switch_results(one_topology_forecasted,test_case_bs,1)
+
+
+grid_one_topology["1"]["gen"]["14"]["gen_bus"]
+
+grid_one_topology["1"]["branch"]["11"]["f_bus"]
+grid_one_topology["1"]["branch"]["11"]["t_bus"]
+
+grid_one_topology["1"]["branch"]["12"]["f_bus"]
+grid_one_topology["1"]["branch"]["12"]["t_bus"]
+
+grid_one_topology["1"]["branch"]["9"]["f_bus"]
+grid_one_topology["1"]["branch"]["9"]["t_bus"]
+
+grid_one_topology["1"]["branch"]["10"]["f_bus"]
+grid_one_topology["1"]["branch"]["10"]["t_bus"]
+
+grid_one_topology["1"]["branch"]["6"]["f_bus"]
+grid_one_topology["1"]["branch"]["6"]["t_bus"]
+
+grid_one_topology["1"]["branch"]["41"]["f_bus"]
+grid_one_topology["1"]["branch"]["41"]["t_bus"]
+
+grid_one_topology["1"]["branch"]["7"]["f_bus"]
+grid_one_topology["1"]["branch"]["7"]["t_bus"]
+
+
+
+
+
+###################
 
 sum(fc_one_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours)
 sum(fc_one_sw_average["$hour"]["objective"] for hour in 1:n_hours)
@@ -402,8 +528,6 @@ sum(fc_one_topology_average["$hour"]["objective"] for hour in 1:n_hours)
 sum(hourly_fc_average["$hour"]["objective"] for hour in 1:n_hours)
 
 
-
-[fc_one_sw_forecasted["$hour"]["solution"]["gen"]["1"]["pg"] for hour in 1:n_hours]
 
 
 fc_one_topology_forecasted["1"]["solution"]["gen"]["1"]
@@ -546,31 +670,4 @@ end
 [fc_two_sw_forecasted["$hour"]["objective"] for hour in 1:n_hours]
 
 
-#########################
-# Here running one simulation per time (trial and error)
-scenario_wind_6 = JSON.parsefile(joinpath(@__DIR__,"case30","Laplace_6_scenarios_$(first_hour)_$(last_hour).json"))
-n_scenarios_6 = 6
-
-one_topology_scenarios_6 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_stochastic_$(n_scenarios_6)_scenarios_$(first_hour)_$(last_hour)_25_06_25200.json"))
-test_case_bs_replicate_6 = _PM.replicate(test_case_bs, n_hours*n_scenarios_6)
-
-test_case_bs_mn_expected_6  = deepcopy(test_case_bs_replicate_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_expected_6,n_hours,n_scenarios_6,scenarios_wind_6)
-
-for i in 1:(n_hours*n_scenarios_6)
-    test_case_bs_mn_expected_6["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate_6["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_6["$i"]["samples_pu"])
-end
-
-test_case_opf_replicate_6_scenarios = _PM.replicate(test_case_opf, n_hours*n_scenarios_6)
-for i in 1:(n_hours*n_scenarios_6)
-    test_case_opf_replicate_6_scenarios["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate_6["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_6["$i"]["samples_pu"])
-end
-
-fc_one_topology_stochastic_6 = run_feasibility_checks_per_hour_stochastic(test_case_bs_mn_expected_6,one_topology_scenarios_6,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios_6)
-
-sum(fc_one_topology_stochastic_6["$hour"]["objective"]*fc_one_topology_stochastic_6["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios_6))
-
-json_fc_one_topology_stochastic_6 = JSON.json(fc_one_topology_stochastic_6)
-open(joinpath(results_folder,case,"fc_one_topology_stochastic_$(n_scenarios_6)_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_fc_one_topology_stochastic_6) 
-end 
+fc_one_topology_forecasted["1"]

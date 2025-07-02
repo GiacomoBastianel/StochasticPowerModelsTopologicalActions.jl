@@ -58,3 +58,8 @@ plot!(hours,forecasted_wind,label = :none,color = :orange,linewidth = 2)
 plot!(hours,measured_wind,label = :none,color = :lightblue,linewidth = 2)
 savefig(joinpath(figures_folder, "Scenarios_8.pdf"))
 savefig(joinpath(figures_folder, "Scenarios_8.svg"))
+
+case_5 = _PM.parse_file(joinpath(dirname(dirname(input_folder)),"data_sources","case5_acdc.m"))
+_PMACDC.process_additional_data!(case_5)
+
+result_dc_opf = _PMACDC.run_acdcopf(case_5,DCPPowerModel,settings = s)

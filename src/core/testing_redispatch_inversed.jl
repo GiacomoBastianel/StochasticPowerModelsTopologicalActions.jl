@@ -467,4 +467,19 @@ hourly_opf_forecasted["1"]["solution"]["gen"]["1"]["pg"]
 forecasted_wind[1]*test_case_opf["gen"]["1"]["pmax"]
 
 redispatch_opf_forecasted["1"]["solution"]["gen"]["1"]["pg_down"]
-fc_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg"] - redispatch_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg_down"]
+redispatch_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg_down"]
+
+
+
+fc_one_sw_forecasted["1"]["solution"]["gen"]["1"]["pg"]
+
+for (g_id,g) in test_case_opf["gen"]
+        println("Generator $g_id: cost = $(g["cost"]), pmax $(g["pmax"]), pmin $(g["pmin"])")
+end
+
+
+for (g_id,g) in test_case_opf["gen"]
+    println("Generator $g_id: pg = $(fc_one_sw_forecasted["1"]["solution"]["gen"][g_id]["pg"])")
+end
+
+print_gen_redispatch(test_case_opf,redispatch_one_sw_forecasted,1)

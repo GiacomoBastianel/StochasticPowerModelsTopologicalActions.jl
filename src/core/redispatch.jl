@@ -163,12 +163,12 @@ function run_hourly_redispatch_fc(grid, result_bs, results_fc, model, optimizer,
                 g["redispatch_cost_up"] = 0.0
                 g["redispatch_cost_down"] = 0.0
             end
-            if g_id == "1"
-                g["redispatch_cost_up"] = 10.0
-                g["redispatch_cost_down"] = 10.0
-                #println("Generator 1 has a cost up of $(g["redispatch_cost_up"])")
-                #println("Generator 1 has a cost down of $(g["redispatch_cost_down"])")
-            end
+            #if g_id == "1"
+            #    g["redispatch_cost_up"] = 10.0
+            #    g["redispatch_cost_down"] = 10.0
+            #    #println("Generator 1 has a cost up of $(g["redispatch_cost_up"])")
+            #    #println("Generator 1 has a cost down of $(g["redispatch_cost_down"])")
+            #end
         end
 
         result_feasibility_checks["$hour"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)
@@ -221,12 +221,12 @@ function run_hourly_redispatch_one_topology_fc(grid, result_bs, results_fc, mode
                 g["redispatch_cost_up"] = 0.0
                 g["redispatch_cost_down"] = 0.0
             end
-            if g_id == "1"
-                g["redispatch_cost_up"] = 10.0
-                g["redispatch_cost_down"] = 10.0
-                #println("Generator 1 has a cost up of $(g["redispatch_cost_up"])")
-                #println("Generator 1 has a cost down of $(g["redispatch_cost_down"])")
-            end
+            #if g_id == "1"
+            #    g["redispatch_cost_up"] = 10.0
+            #    g["redispatch_cost_down"] = 10.0
+            #    #println("Generator 1 has a cost up of $(g["redispatch_cost_up"])")
+            #    #println("Generator 1 has a cost down of $(g["redispatch_cost_down"])")
+            #end
         end
 
         result_feasibility_checks["$hour"] = solve_acdc_full_redispatch_opf(feasibility_check,model,optimizer)

@@ -25,6 +25,7 @@ one_scenario = 1
 s = Dict("output" => Dict("branch_flows" => true), "conv_losses_mp" => true)
 s_dual = Dict("output" => Dict("branch_flows" => true,"duals" => true), "conv_losses_mp" => true)
 
+#=
 #########################################################################################
 ## Processing input data
 input_folder = @__DIR__
@@ -59,7 +60,7 @@ plot!(forecasted_wind, label = "Forecasted", color = :orange)
 case_figures = "case_30"
 savefig(joinpath(results_folder_figures,case_figures,"Time_series_$(first_hour)_$(last_hour)_meas_avg_for.svg"))
 savefig(joinpath(results_folder_figures,case_figures,"Time_series_$(first_hour)_$(last_hour)_meas_avg_for.pdf"))
-
+=#
 
 
 # Uploading results
@@ -117,10 +118,20 @@ hourly_fc_adjusted         = JSON.parsefile(joinpath(results_folder,"case_30","s
 hourly_fc_measured         = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","hourly_fc_measured_$(first_hour)_$(last_hour).json"))
 
 
+sum(hourly_fc_forecasted["$hour"]["objective"] for hour in 1:24)
+sum(fc_one_sw_forecasted["$hour"]["objective"] for hour in 1:24)
+sum(fc_two_sw_forecasted["$hour"]["objective"] for hour in 1:24)
+sum(fc_one_topology_forecasted["$hour"]["objective"] for hour in 1:24)
+
 sum(hourly_fc_measured["$hour"]["objective"] for hour in 1:24)
 sum(fc_one_sw_measured["$hour"]["objective"] for hour in 1:24)
 sum(fc_two_sw_measured["$hour"]["objective"] for hour in 1:24)
 sum(fc_one_topology_measured["$hour"]["objective"] for hour in 1:24)
+
+sum(hourly_fc_average["$hour"]["objective"] for hour in 1:24)
+sum(fc_one_sw_average["$hour"]["objective"] for hour in 1:24)
+sum(fc_two_sw_average["$hour"]["objective"] for hour in 1:24)
+sum(fc_one_topology_average["$hour"]["objective"] for hour in 1:24)
 
 
 measured_wind_gen_1 = measured_wind*test_case_opf["gen"]["1"]["pmax"]
@@ -138,7 +149,7 @@ forecasted_wind_gen_1_pg - measured_wind_gen_1_pg
 
 
 #######################
-
+#=
 test_case_opf_replicate_one_scenario = _PM.replicate(test_case_opf, n_hours*one_scenario)
 test_case_opf_mn_measured = deepcopy(test_case_opf_replicate_one_scenario)
 _SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_measured,n_hours,one_scenario,scenario_wind_4)
@@ -185,7 +196,7 @@ for i in 1:(n_hours*n_scenarios)
     test_case_bs_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_4["$i"]["samples_pu"])
     test_case_bs_mn_adjusted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenario_wind_4_adjusted["$i"]["samples_pu"])
 end
-
+=#
 hourly_redispatch_measured = _SPMTA.run_hourly_redispatch_fc(test_case_bs_mn_measured,hourly_bs_measured,hourly_fc_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 redispatch_one_topology_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_topology_measured,fc_one_topology_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
 redispatch_one_sw_measured = _SPMTA.run_hourly_redispatch_one_topology_fc(test_case_bs_mn_measured,one_switching_action_measured,fc_one_sw_measured,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s)
@@ -538,3 +549,21 @@ objs = [redispatch_opf_scenarios_4_adjusted["$hour"]["objective"] for hour in 1:
 [redispatch_opf_average["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours)]
 [redispatch_opf_scenarios_4["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours*n_scenarios)]
 [redispatch_opf_scenarios_4_adjusted["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours*n_scenarios)]
+
+
+[redispatch_one_topology_forecasted["$h"]["solution"]["gen"]["1"]["pg_up"] for h in 1:(n_hours)]
+[redispatch_one_topology_forecasted["$h"]["solution"]["gen"]["1"]["pg_down"] for h in 1:(n_hours)]
+
+print_gen_redispatch(test_case_opf,redispatch_one_topology_forecasted,12)
+
+
+########################
+
+one_topology_scenarios_6 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","24_hours_BS_one_topology_stochastic_$(n_scenarios_6)_scenarios_$(first_hour)_$(last_hour)_25_06_25200.json"))
+fc_one_topology_scenarios_6 = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","fc_one_topology_stochastic_$(n_scenarios_6)_scenarios_$(first_hour)_$(last_hour).json"))
+redispatch_one_topology_stochastic_scenarios_6 = _SPMTA.run_hourly_redispatch_stochastic_fc(test_case_bs_mn_measured,test_case_bs_mn_expected_6,one_topology_scenarios_6  ,fc_one_topology_scenarios_6,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,s,n_hours,n_scenarios_6)
+sum(redispatch_one_topology_stochastic_scenarios_6["$hour"]["objective"]*redispatch_one_topology_stochastic_scenarios_6["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios_6))
+
+sum(fc_one_topology_stochastic["$hour"]["objective"]*fc_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) #+ sum(redispatch_one_topology_stochastic["$hour"]["objective"]*redispatch_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios))
+sum(fc_one_topology_stochastic["$hour"]["objective"]*fc_one_topology_stochastic["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios)) + sum(redispatch_one_topology_stochastic_scenarios_6["$hour"]["objective"]*redispatch_one_topology_stochastic_scenarios_6["$hour"]["probability"] for hour in 1:(n_hours*n_scenarios_6))
+

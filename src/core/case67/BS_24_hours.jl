@@ -7,9 +7,7 @@ import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerMo
 using JuMP, Juniper, HSL_jll, MathOptInterface, HiGHS
 
 mip_gap = 1e-4
-gurobi_base = JuMP.optimizer_with_attributes(Gurobi.Optimizer)
-gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 600,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
-gurobi_opf = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1200,"MIPGap" => mip_gap,"QCPDual" => 1,"BarHomogeneous" => 1)#, "ScaleFlag"=>2, "NumericFocus"=>2) 
+gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 5400,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2) 
 ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
 juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 36000)
 
@@ -26,6 +24,9 @@ test_case_file = joinpath(input_folder,"data_sources/case67.m")
 original_grid = _PM.parse_file(test_case_file)
 test_case = _PM.parse_file(test_case_file)
 _PMACDC.process_additional_data!(test_case)
+
+opf_67 = _PMACDC.run_acdcopf(test_case_json, LPACCPowerModel, gurobi; setting = s)
+opf_67_ac = _PMACDC.run_acdcopf(test_case_json, ACPPowerModel, ipopt; setting = s_dual)
 
 test_case["gen"]["2"]["cost"][1] = 59.0
 test_case["gen"]["4"]["cost"][1] = 59.0
@@ -48,21 +49,6 @@ test_case["gen"]["11"]["cost"][1] = 110.0
 test_case["gen"]["13"]["cost"][1] = 110.0
 test_case["gen"]["19"]["cost"][1]  = 110.0
 
-for (l_id,l) in test_case["load"]
-    l["pd"] = l["pd"]*0.6
-end
-
-for (g_id,g) in test_case["gen"]
-    if g["cost"][1] < 980#opf_118_ac["solution"]["gen"]["$g_id"]["pg"] > 0.0
-        println("OKAY Gen $g_id, bus $(g["gen_bus"]), cost $(g["cost"][1]), pmax $(g["pmax"])")#, pg is $(opf_67["solution"]["gen"]["$g_id"]["pg"])")
-    else
-        println("NOT YET Gen $g_id, bus $(g["gen_bus"]), cost $(g["cost"][1]), pmax $(g["pmax"])")#, pg is $(opf_67["solution"]["gen"]["$g_id"]["pg"])")
-    end
-end
-
-
-
-
 function add_VOLL_generators(data)
     first_l = maximum(parse.(Int, keys(data["gen"])))
     count = 0
@@ -84,6 +70,33 @@ end
 add_VOLL_generators(test_case)
 =#
 
+
+input_folder = dirname(dirname(dirname(@__DIR__)))
+test_case_file = joinpath(input_folder,"data_sources/case67_modified.json")
+original_grid = _PM.parse_file(test_case_file)
+test_case = _PM.parse_file(test_case_file)
+#_PMACDC.process_additional_data!(test_case)
+
+opf_67 = _PMACDC.run_acdcopf(test_case, LPACCPowerModel, ipopt; setting = s)
+opf_67_ac = _PMACDC.run_acdcopf(test_case, ACPPowerModel, ipopt; setting = s_dual)
+
+for (g_id,g) in test_case["gen"]
+    if opf_67_ac["solution"]["gen"][g_id]["pg"] > 0.001
+        println("Gen $g_id, gen bus $(g["gen_bus"]), dual $(opf_67_ac["solution"]["bus"]["$(g["gen_bus"])"]["lam_kcl_r"]), generating $(opf_67_ac["solution"]["gen"][g_id]["pg"])")
+    end
+end
+
+opf_67_ac["solution"]["gen"]["1"]
+for (l_id,l) in test_case["load"]
+    l["pd"] = l["pd"]*2
+end
+
+for (g_id,g) in test_case["gen"]
+    println("Gen $g_id, gen bus $(g["gen_bus"]), $(g["cost"])")
+end
+
+
+###################################
 function split_one_bus_per_time(test_case,results_dict,results_dict_ac_check,results_dict_lpac_check)
     for (b_id,b) in test_case["bus"]
         results_dict["$b_id"] = Dict{String,Any}()
@@ -91,8 +104,8 @@ function split_one_bus_per_time(test_case,results_dict,results_dict_ac_check,res
         test_case_bs = deepcopy(test_case)
         splitted_bus_ac = parse(Int64,b_id)
         test_case_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_more_buses(test_case_bs,splitted_bus_ac)
-        test_case_bs["switch"]["1"]["cost"] = 10.0
-        results_dict["$b_id"] = _PMTP.run_acdcsw_AC_big_M(test_case_bs,LPACCPowerModel,gurobi)
+        test_case_bs["switch"]["1"]["cost"] = 1.0
+        results_dict["$b_id"] = _PMTP.run_acdcsw_AC_big_M(test_case_bs,LPACCPowerModel,gurobi_bs)
         test_case_bs_check = deepcopy(test_case_bs)
         test_case_bs_check_auxiliary = deepcopy(test_case_bs)
         if results_dict["$b_id"]["termination_status"] == JuMP.OPTIMAL
@@ -103,11 +116,27 @@ function split_one_bus_per_time(test_case,results_dict,results_dict_ac_check,res
     end
 end
 
+
 result_bs = Dict{String,Any}()
 results_ac_check = Dict{String,Any}()
 results_lpac_check = Dict{String,Any}()
-split_one_bus_per_time(test_case_json,result_bs,results_ac_check,results_lpac_check)
+split_one_bus_per_time(test_case,result_bs,results_ac_check,results_lpac_check)
 
+minimum(results_ac_check["$b_id"]["objective"] for (b_id,b) in test_case["bus"] if haskey(results_ac_check["$b_id"],"objective"))
+findmin([(b_id, results_ac_check["$b_id"]["objective"]) for (b_id, b) in test_case["bus"] if haskey(results_ac_check["$b_id"], "objective")])
+results_ac_check["1"]
+
+sorted_objectives = sort([(b_id, results_ac_check["$b_id"]["objective"]) for (b_id, b) in test_case["bus"] if haskey(results_ac_check["$b_id"], "objective")], by = x -> x[2])
+
+println("Sorted objectives with corresponding b_id:")
+for (b_id, obj) in sorted_objectives
+    println("b_id: $b_id, objective: $obj")
+end
+
+obj_bs_ac = [results_ac_check["$b_id"]["objective"] for (b_id,b) in test_case["bus"] if haskey(results_ac_check["$b_id"],"objective")]
+
+scatter(obj_bs_ac)
+sort(obj_bs_ac)
 
 buses = [b_id for (b_id,b) in test_case["bus"]]
 obj_bs = [result_bs["$b_id"]["objective"] for (b_id,b) in test_case["bus"]]
@@ -129,20 +158,6 @@ for (br_id, br) in test_case["branch"]
 end
 sorted_bus_duals_sum = sort(collect(bus_duals_sum), by = x -> x[2], rev = true)
 
-input_folder = dirname(dirname(dirname(@__DIR__)))
-test_case_file = joinpath(input_folder,"data_sources/case67_modified.json")
-original_grid = _PM.parse_file(test_case_file)
-test_case = _PM.parse_file(test_case_file)_PMACDC.process_additional_data!(test_case)
-
-test_case_json = JSON.parsefile(test_case_file)
-
-for (l_id,l) in test_case_json["load"]
-    l["pd"] = l["pd"]/6*10
-end
-
-
-opf_67 = _PMACDC.run_acdcopf(test_case_json, LPACCPowerModel, gurobi; setting = s)
-opf_67_ac = _PMACDC.run_acdcopf(test_case_json, ACPPowerModel, ipopt; setting = s_dual)
 
 
 #########################################################################################
