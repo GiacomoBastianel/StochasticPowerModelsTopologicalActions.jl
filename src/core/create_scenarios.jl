@@ -101,6 +101,55 @@ diff_measured_P50_quarterly = measured_quarterly .- P50_11h_quarterly
 scatter(P50_11h, label = "P50 11h forecast", xlabel = "Hour", ylabel = "Capacity factor [-]")
 scatter(P90_11h, label = "P90 11h forecast")
 scatter(P10_11h, label = "P10 11h forecast")
+scatter(measured, label = "Measured")
+
+p1 = plot(xlabel = "Hour", ylabel = "Capacity factor [-]", xlims = (0, 720), xticks = 0:24:720, ylims = (0.0, 1.0), yticks = 0.0:0.2:1.0)
+for i in 1:12
+    plot!(p1,measured[((i-1)*720)+1:(i*720)])
+end
+plot(p1)
+
+# Find the longest streak of values higher than 0.8 in `measured` and indicate which values
+longest_streak = 0
+current_streak = 0
+longest_streak_positions = []
+current_positions = []
+
+for (index, value) in enumerate(measured)
+    if value > 0.8
+        current_streak += 1
+        push!(current_positions, index)
+        if current_streak > longest_streak
+            longest_streak = current_streak
+            longest_streak_positions = deepcopy(current_positions)
+        end
+    else
+        current_streak = 0
+        current_positions = []
+    end
+end
+
+println("The positions of the values in the longest streak are: $longest_streak_positions.")
+
+
+measured_two_weeks = measured[8153:8488]
+forecasted_two_weeks = P50_11h[8153:8488]
+
+json_measured_two_weeks = JSON.json(measured_two_weeks)
+open(joinpath(@__DIR__,"case30","measured_two_weeks_8153_8488.json"),"w") do f 
+    write(f, json_measured_two_weeks) 
+end 
+
+json_forecasted_two_weeks = JSON.json(forecasted_two_weeks)
+open(joinpath(@__DIR__,"case30","forecasted_two_weeks_8153_8488.json"),"w") do f 
+    write(f, json_forecasted_two_weeks) 
+end 
+
+
+plot(measured_two_weeks,xticks = 0:24:336, xlabel = "Hour", ylabel = "Capacity factor [-]", xlims = (1, 336), ylims = (0.0, 1.0), yticks = 0.0:0.2:1.0, label = "Measured wind")
+plot!(forecasted_two_weeks, label = "Forecasted wind")
+figures_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Figures/RES_uncertainty"
+savefig(joinpath(figures_folder, "Measured_vs_forecasted_two_weeks.svg"))
 
 
 diff_P50_P10 = P50_11h .- P10_11h
@@ -235,7 +284,6 @@ scatter(sampled_errors)
 =#
 ######################
 # Create scenarios
-n_scenarios = 4
 
 function create_scenarios_per_hour(n,pdf,samples,value)
     X = reshape(samples, 1, :)
@@ -280,8 +328,14 @@ pdf_values_centers_rel_prob_clamped = pdf_values_centers_clamped ./ sum(pdf_valu
 =#
 
 ##############
-first_hour = 355
-last_hour  = 378
+#first_hour = 355
+#last_hour  = 378
+
+first_hour = 8153
+last_hour  = 8488
+n_scenarios = 6
+
+
 
 forecasted_wind = P50_11h[first_hour:last_hour]
 measured_wind   = measured[first_hour:last_hour]
@@ -298,8 +352,12 @@ hours = collect(start_hour_simulation:end_hour_simulation)
 expected_value_wind = []
 scenarios_wind = Dict{String,Any}()
 count_hour = 0
-forecasted_wind = JSON.parsefile(joinpath(@__DIR__,"case30","forecasted_wind_hours_355_378_modified.json"))
-measured_wind = JSON.parsefile(joinpath(@__DIR__,"case30","measured_wind_355_378_modified.json"))
+#forecasted_wind = JSON.parsefile(joinpath(@__DIR__,"case30","forecasted_wind_hours_$(first_hour)_$(last_hour)_modified.json"))
+#measured_wind = JSON.parsefile(joinpath(@__DIR__,"case30","measured_wind_$(first_hour)_$(last_hour)_modified.json"))
+
+#forecasted_wind = JSON.parsefile(joinpath(@__DIR__,"case30","forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
+#measured_wind = JSON.parsefile(joinpath(@__DIR__,"case30","measured_two_weeks_$(first_hour)_$(last_hour).json"))
+
 
 for i in hours_simulation_Elia
     count_hour += 1
@@ -321,6 +379,11 @@ for i in hours_simulation_Elia
     push!(expected_value_wind, expected_value_wind_hourly)
 end
 
+
+samples_pu_total = [scenarios_wind["$h"]["samples_pu"] for h in 1:(n_hours*n_scenarios)]
+scatter(samples_pu_total)
+
+
 case = "case30"
 json_scenarios_wind = JSON.json(scenarios_wind)
 open(joinpath(@__DIR__,case,"Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
@@ -328,8 +391,6 @@ open(joinpath(@__DIR__,case,"Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(la
 end 
  
 ##############################
-n_scenarios = 12
-n_hours = 24
 
 scenarios_wind_plot = JSON.parsefile(joinpath(@__DIR__,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
 forecasted_wind_plot = forecasted_wind
@@ -338,7 +399,8 @@ measured_wind_plot   = measured_wind
 probs = [scenarios_wind_plot["$s"]["probability"] for s in 1:(n_hours*n_scenarios)]
 samples = [scenarios_wind_plot["$s"]["samples_pu"] for s in 1:(n_hours*n_scenarios)]
 
-p1 = plot(xlabel = "Hour", ylabel = "Capacity factor",xlims = (0,24),xticks = 1:1:24)
+n_hours = 240
+p1 = plot(xlabel = "Hour", ylabel = "Capacity factor",xlims = (1,n_hours),xticks = 0:24:n_hours)
 for h in 1:n_hours
     vector_samples = []
     for s in 1:n_scenarios
@@ -351,8 +413,8 @@ end
 plot!(p1,forecasted_wind,label = "Forecasted wind",color = :orange)
 plot!(p1,measured_wind,label = "Measured wind",color = :blue)
 
-savefig(joinpath(figures_folder, "Laplace_$(n_scenarios)_scenarios_.pdf"))
-savefig(joinpath(figures_folder, "Laplace_$(n_scenarios)_scenarios_.svg"))
+savefig(joinpath(figures_folder, "Laplace_$(n_scenarios)_scenarios_$(n_hours).pdf"))
+savefig(joinpath(figures_folder, "Laplace_$(n_scenarios)_scenarios_$(n_hours).svg"))
 
 ## Processing saved wind json files
 #=

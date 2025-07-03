@@ -7,7 +7,7 @@ import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerMo
 using JuMP, Juniper, HSL_jll, MathOptInterface, HiGHS
 using Statistics
 
-mip_gap = 1e-3
+mip_gap = 5e-4
 gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 3600*7,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2) 
 gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-6,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
 gurobi_opf = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 600,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>3) 
@@ -62,13 +62,13 @@ result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,ACPPowerModel,i
 
 #########################################################################################
 # Add dimensions for stochastic part
-n_scenarios = 6
-n_hours = 24
+first_hour = 8153
+last_hour  = 8488
+
+n_hours = last_hour - first_hour + 1
 one_scenario = 1
-#N_4 = 4
-#n_scenarios = 8
 hours = collect(1:n_hours)
-_SPMTA.add_dimensions!(test_case_bs,n_scenarios,n_hours)
+_SPMTA.add_dimensions!(test_case_bs,one_scenario,n_hours)
 
 start_hour_simulation = 1
 end_hour_simulation = 8760
@@ -80,51 +80,39 @@ folder_data = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/El
 #folder_results = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Results/case_30"
 
 input_data_folder = joinpath(@__DIR__,"case30")
-first_hour = 355 
-last_hour = 378
+#first_hour = 355 
+#last_hour = 378
 
-forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
-measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
+forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
+measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_two_weeks_$(first_hour)_$(last_hour).json"))
+
+#forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
+#measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
 average_forecasted_measured_wind = [mean([forecasted_wind[i],measured_wind[i]]) for i in 1:length(forecasted_wind)]
 
-plot(forecasted_wind,label = "Forecasted wind",grid = :none,ylims = (0,1.2),legend = :topleft,xticks = 1:1:24,xlabel = "Hour",ylabel = "Capacity factor [-]",)
+plot(forecasted_wind,label = "Forecasted wind",grid = :none,ylims = (0,1.2),legend = :topleft,xticks = 0:24:n_hours,xlims = (1,n_hours+1),xlabel = "Hour",ylabel = "Capacity factor [-]",)
 plot!(measured_wind,label = "Average forecasted-measured wind")
 plot!(average_forecasted_measured_wind,label = "Measured wind")
-
-scenarios_wind_4 = JSON.parsefile(joinpath(results_folder,case,"scenario_wind_4_$(first_hour)_$(last_hour)_modified.json"))
-scenarios_wind_6 = JSON.parsefile(joinpath(@__DIR__,"case30","Laplace_6_scenarios_$(first_hour)_$(last_hour).json"))
-scenarios_wind_8 = JSON.parsefile(joinpath(results_folder,case,"scenario_wind_8_$(first_hour)_$(last_hour)_modified.json"))
-scenarios_wind_4_adjusted = JSON.parsefile(joinpath(results_folder,case,"scenario_wind_4_$(first_hour)_$(last_hour)_adjusted.json"))
 
 #########################################################################################
 ## Running simulations
 # Busbar splitting
-test_case_opf_replicate = _PM.replicate(test_case_opf, n_hours*n_scenarios)
 test_case_opf_replicate_one_scenario = _PM.replicate(test_case_opf, n_hours*one_scenario)
 
 test_case_opf_mn_measured = deepcopy(test_case_opf_replicate_one_scenario)
 test_case_opf_mn_forecasted = deepcopy(test_case_opf_replicate_one_scenario)
 test_case_opf_mn_average = deepcopy(test_case_opf_replicate_one_scenario)
-test_case_opf_mn_expected = deepcopy(test_case_opf_replicate)
-test_case_opf_mn_adjusted = deepcopy(test_case_opf_replicate)
 
-n_hours = 24
 
-_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_measured,n_hours,one_scenario,scenarios_wind_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_forecasted,n_hours,one_scenario,scenarios_wind_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_expected,n_hours,n_scenarios,scenarios_wind_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_adjusted,n_hours,4,scenarios_wind_4_adjusted)
-_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_average,n_hours,one_scenario,scenarios_wind_6)
+_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_measured,n_hours,one_scenario,one_scenario)
+_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_forecasted,n_hours,one_scenario,one_scenario)
+_SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_average,n_hours,one_scenario,one_scenario)
 
 
 for i in 1:(n_hours*one_scenario)
     test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
     test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
     test_case_opf_mn_average["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*average_forecasted_measured_wind[i])
-end
-for i in 1:(n_hours*n_scenarios)
-    test_case_opf_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind_6["$i"]["samples_pu"])
-    #test_case_opf_mn_adjusted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind_8_adjusted["$i"]["samples_pu"])
 end
 
 ################################################################################
@@ -138,12 +126,6 @@ result_measured_24_lpac = Dict{String,Any}()
 result_average_24_ac = Dict{String,Any}()
 result_average_24_lpac = Dict{String,Any}()
 
-result_expected_24_ac = Dict{String,Any}()
-result_expected_24_lpac = Dict{String,Any}()
-
-result_adjusted_24_ac = Dict{String,Any}()
-result_adjusted_24_lpac = Dict{String,Any}()
-
 for hour in 1:(n_hours*one_scenario)
     result_forecasted_24_ac["$hour"] = _PM.solve_opf(test_case_opf_mn_forecasted["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
     result_forecasted_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_forecasted["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
@@ -154,13 +136,6 @@ for hour in 1:(n_hours*one_scenario)
     result_average_24_ac["$hour"] = _PM.solve_opf(test_case_opf_mn_average["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
     result_average_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_average["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
 end
-for hour in 1:(n_hours*n_scenarios)
-    result_expected_24_ac["$hour"] = _PM.solve_opf(test_case_opf_mn_expected["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
-    result_expected_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_expected["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
-
-    #result_adjusted_24_ac["$hour"] = _PM.solve_opf(test_case_opf_mn_adjusted["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
-    #result_adjusted_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_adjusted["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
-end
 
 
 obj_forecasted_24_ac = [result_forecasted_24_ac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
@@ -169,47 +144,24 @@ obj_measured_24_lpac = [result_measured_24_lpac["$i"]["objective"] for i in 1:(n
 obj_measured_24_ac = [result_measured_24_ac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 obj_average_24_ac = [result_average_24_ac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
 obj_average_24_lpac = [result_average_24_lpac["$i"]["objective"] for i in 1:(n_hours*one_scenario)]
-obj_expected_24_ac = [result_expected_24_ac["$i"]["objective"] for i in 1:(n_hours*n_scenarios)]
-obj_expected_24_lpac = [result_expected_24_lpac["$i"]["objective"] for i in 1:(n_hours*n_scenarios)]
-
 
 
 plot(obj_forecasted_24_ac)
 plot!(obj_average_24_ac)
 plot!(obj_measured_24_ac)
 
-obj_expected_24_ac = []
-obj_expected_24_lpac = []
-obj_adjusted_24_ac = []
-obj_adjusted_24_lpac = []
-for hour in 1:n_hours
-    first_n = (hour - 1)*N_4 + 1
-    last_n = n_scenarios*hour
-    opf_hour_ac = sum(result_expected_24_ac["$h"]["objective"]*test_case_opf_mn_expected["nw"]["$h"]["probability"] for h in first_n:last_n)
-    push!(obj_expected_24_ac,opf_hour_ac)
-    opf_hour_lpac = sum(result_expected_24_lpac["$h"]["objective"]*test_case_opf_mn_expected["nw"]["$h"]["probability"] for h in first_n:last_n)
-    push!(obj_expected_24_lpac,opf_hour_lpac)
-
-    opf_hour_ac_adjusted = sum(result_adjusted_24_ac["$h"]["objective"]*test_case_opf_mn_adjusted["nw"]["$h"]["probability"] for h in first_n:last_n)
-    push!(obj_adjusted_24_ac,opf_hour_ac_adjusted)
-    opf_hour_lpac_adjusted = sum(result_adjusted_24_lpac["$h"]["objective"]*test_case_opf_mn_adjusted["nw"]["$h"]["probability"] for h in first_n:last_n)
-    push!(obj_adjusted_24_lpac,opf_hour_lpac_adjusted)
-end
-
 exp_ = sum(obj_expected_24_ac)
 for_ = sum(obj_forecasted_24_ac)
-mea_ = sum(obj_measured_24_ac)
-adj_ = sum(obj_adjusted_24_ac)
 avg_ = sum(obj_average_24_ac)
 
 
-plot(obj_expected_24_ac./10^3,label = "Stochastic",grid = :none,ylims = (5,25),xticks = 1:n_hours,xlims = (0.8,24.5),xlabel = "Hour",ylabel = "Generation costs [k€]",
+plot(obj_measured_24_ac./10^3,label = "Measured",grid = :none,ylims = (5,25),xticks = 0:24:n_hours,xlims = (0.8,n_hours),xlabel = "Hour",ylabel = "Generation costs [k€]",
 legend = :topleft,xlabelfontsize = 10,ylabelfontsize = 10,xtickfont = font(8),ytickfont = font(8))
-plot!(obj_measured_24_ac./10^3,label = "Measured")
 plot!(obj_forecasted_24_ac./10^3,label = "Forecasted")
-plot!(obj_adjusted_24_ac./10^3,label = "Adjusted")
 plot!(obj_average_24_ac./10^3,label = "Average")
-savefig(joinpath(results_folder_figures,"case_30","OPF_results_$(first_hour)_$(last_hour)_modified.svg"))
+savefig(joinpath(results_folder_figures,"case_30","OPF_results_$(first_hour)_$(last_hour).svg"))
+savefig(joinpath(results_folder_figures,"case_30","OPF_results_$(first_hour)_$(last_hour).pdf"))
+savefig(joinpath(results_folder_figures,"case_30","OPF_results_$(first_hour)_$(last_hour).png"))
 
 
 json_hourly_forecasted_24 = JSON.json(result_forecasted_24_ac)
@@ -227,113 +179,38 @@ open(joinpath(results_folder,case,"Hourly_opf_average_$(first_hour)_$(last_hour)
     write(f, json_hourly_average_24) 
 end 
 
-json_hourly_expected_24 = JSON.json(result_expected_24_ac)
-open(joinpath(results_folder,case,"Hourly_opf_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_hourly_expected_24) 
-end 
-
-json_hourly_adjusted_24 = JSON.json(result_adjusted_24_ac)
-open(joinpath(results_folder,case,"Hourly_opf_stochastic_4_scenarios_adjusted_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_hourly_adjusted_24) 
-end 
-
-
 
 ###########################################################################
 # -> OPFs are comparable now, data set built, need to tweak the functions to have a multistep-stochastic formulation
-n_hours = 24
-test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours*n_scenarios)
 test_case_bs_replicate_one_scenario = _PM.replicate(test_case_bs, n_hours*one_scenario)
 
 test_case_bs_mn_measured = deepcopy(test_case_bs_replicate_one_scenario)
 test_case_bs_mn_forecasted = deepcopy(test_case_bs_replicate_one_scenario)
 test_case_bs_mn_average = deepcopy(test_case_bs_replicate_one_scenario)
-test_case_bs_mn_expected = deepcopy(test_case_bs_replicate)
-test_case_bs_mn_adjusted = deepcopy(test_case_bs_replicate)
 
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_measured,n_hours,one_scenario,scenarios_wind_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_forecasted,n_hours,one_scenario,scenarios_wind_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_average,n_hours,one_scenario,scenarios_wind_6)
-_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_expected,n_hours,n_scenarios,scenarios_wind_6)
-#_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_adjusted,n_hours,N_4,scenarios_wind_8_adjusted)
+_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_measured,n_hours,one_scenario,one_scenario)
+_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_forecasted,n_hours,one_scenario,one_scenario)
+_SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_average,n_hours,one_scenario,one_scenario)
 
 for i in 1:(n_hours*one_scenario)
-    test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
-    test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
-    test_case_bs_mn_average["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*average_forecasted_measured_wind[i])
-end
-for i in 1:(n_hours*n_scenarios)
-    test_case_bs_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind_6["$i"]["samples_pu"])
-    #test_case_bs_mn_adjusted["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind_8_adjusted["$i"]["samples_pu"])
+    test_case_bs_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
+    test_case_bs_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
+    test_case_bs_mn_average["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*average_forecasted_measured_wind[i])
 end
 
-test_case_bs_mn_expected_sp = deepcopy(test_case_bs_mn_expected)
-_SPMTA.prepare_starting_value_dict_lpac_nw_sp(test_case_bs_mn_expected_sp,n_hours,n_scenarios)
+test_case_bs_mn_measured_sp   = deepcopy(test_case_bs_mn_measured)
+test_case_bs_mn_forecasted_sp = deepcopy(test_case_bs_mn_forecasted)
+test_case_bs_mn_average_sp    = deepcopy(test_case_bs_mn_average)
 
-test_case_bs_mn_adjusted_sp = deepcopy(test_case_bs_mn_adjusted)
-_SPMTA.prepare_starting_value_dict_lpac_nw_sp(test_case_bs_mn_adjusted_sp,n_hours,n_scenarios)
+_SPMTA.prepare_starting_value_dict_lpac_nw_sp(test_case_bs_mn_measured_sp,n_hours,one_scenario)
+_SPMTA.prepare_starting_value_dict_lpac_nw_sp(test_case_bs_mn_forecasted_sp,n_hours,one_scenario)
+_SPMTA.prepare_starting_value_dict_lpac_nw_sp(test_case_bs_mn_average_sp,n_hours,one_scenario)
 
-
-test_case_bs_mn_expected_hours_sp = Dict{String,Any}()
-test_case_bs_mn_adjusted_hours_sp = Dict{String,Any}()
-
-for hour in 1:n_hours
-    first_n = (hour - 1)*n_scenarios + 1
-    last_n = n_scenarios*hour
-    test_case_bs_mn_expected_hours_sp["$hour"] = Dict{String,Any}()
-    test_case_bs_mn_expected_hours_sp["$hour"]["nw"] = Dict{String,Any}()
-    test_case_bs_mn_expected_hours_sp["$hour"]["multinetwork"] = true
-    test_case_bs_mn_expected_hours_sp["$hour"]["per_unit"] = true
-    for i in first_n:last_n
-        test_case_bs_mn_expected_hours_sp["$hour"]["nw"]["$i"] = deepcopy(test_case_bs_mn_expected_sp["nw"]["$i"])
-    end
-
-    test_case_bs_mn_adjusted_hours_sp["$hour"] = Dict{String,Any}()
-    test_case_bs_mn_adjusted_hours_sp["$hour"]["nw"] = Dict{String,Any}()
-    test_case_bs_mn_adjusted_hours_sp["$hour"]["multinetwork"] = true
-    test_case_bs_mn_adjusted_hours_sp["$hour"]["per_unit"] = true
-    for i in first_n:last_n
-        test_case_bs_mn_adjusted_hours_sp["$hour"]["nw"]["$i"] = deepcopy(test_case_bs_mn_adjusted_sp["nw"]["$i"])
-    end
-end
 
 result_bs_hourly_forecasted_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi_lpac,n_hours,one_scenario;setting = s)
 result_bs_hourly_measured_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_mn_measured,LPACCPowerModel,gurobi_lpac,n_hours,one_scenario;setting = s)
 result_bs_hourly_average_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_mn_average,LPACCPowerModel,gurobi_lpac,n_hours,one_scenario;setting = s)
 
-result_bs_hourly_expected_24 = Dict{String,Any}()
-result_bs_hourly_adjusted_24 = Dict{String,Any}()
-for i in 1:2
-    println("---------------------")
-    println("Starting hour $(i)")
-    println("---------------------")
-    hourly_grid_stochastic = deepcopy(test_case_bs_mn_expected)
-    hourly_grid_stochastic["nw"] = Dict{String,Any}()
-
-    #hourly_grid_stochastic_adjusted = deepcopy(test_case_bs_mn_adjusted)
-    #hourly_grid_stochastic_adjusted["nw"] = Dict{String,Any}()
-    println("---------------------")
-    println("Hourly grid stochastic created")
-    println("---------------------")
-    for s in 1:n_scenarios
-        println("---------------------")
-        println("Preparing scenario $s")
-        println("---------------------")
-        h = (i - 1)*n_scenarios + s
-        hourly_grid_stochastic["nw"]["$s"] = deepcopy(test_case_bs_mn_expected["nw"]["$h"])
-    end
-    #for s in 1:N_4
-    #    println("---------------------")
-    #    println("Preparing scenario $s")
-    #    println("---------------------")
-    #    h = (i - 1)*N_4 + s
-    #    hourly_grid_stochastic_adjusted["nw"]["$s"] = deepcopy(test_case_bs_mn_adjusted["nw"]["$h"])
-    #end
-    result_bs_hourly_expected_24["$i"] = Dict{String,Any}()
-    result_bs_hourly_expected_24["$i"] = deepcopy(_SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(hourly_grid_stochastic,LPACCPowerModel,gurobi_lpac; setting = s))
-    #result_bs_hourly_adjusted_24["$i"] = Dict{String,Any}()
-    #result_bs_hourly_adjusted_24["$i"] = deepcopy(_SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(hourly_grid_stochastic_adjusted,LPACCPowerModel,gurobi_lpac; setting = s))
-end
 
 
 json_hourly_forecasted_24 = JSON.json(result_bs_hourly_forecasted_24)
@@ -351,15 +228,6 @@ open(joinpath(results_folder,case,"Hourly_bs_average_$(first_hour)_$(last_hour).
     write(f, json_hourly_average_24) 
 end 
 
-json_hourly_expected_24 = JSON.json(result_bs_hourly_expected_24)
-open(joinpath(results_folder,case,"Hourly_bs_stochastic_4_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_hourly_expected_24) 
-end 
-
-json_hourly_adjusted_24 = JSON.json(result_bs_hourly_adjusted_24)
-open(joinpath(results_folder,case,"Hourly_bs_stochastic_4_scenarios_adjusted_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_hourly_adjusted_24) 
-end 
 
 #=
 function run_feasibility_checks_per_hour(grid, result_bs, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings,n_scenarios)
@@ -562,12 +430,50 @@ plot!(hourly_measured_bs./10^3,label = "Measured hourly BS")
 plot!(hourly_forecasted_bs./10^3,label = "Forecasted hourly BS")
 =#
 
+test_case_bs_mn_measured_days   = Dict{String,Any}()
+test_case_bs_mn_forecasted_days = Dict{String,Any}()
+test_case_bs_mn_average_days    = Dict{String,Any}()
+n_days = 14
+
+for day in 1:n_days
+    test_case_bs_mn_measured_days["$day"]   = Dict{String,Any}()
+    test_case_bs_mn_forecasted_days["$day"] = Dict{String,Any}()
+    test_case_bs_mn_average_days["$day"]    = Dict{String,Any}()
+    test_case_bs_mn_measured_days["$day"]   = deepcopy(test_case_bs_mn_measured_sp)
+    test_case_bs_mn_measured_days["$day"]["hours"] = 24
+    test_case_bs_mn_forecasted_days["$day"] = deepcopy(test_case_bs_mn_forecasted)
+    test_case_bs_mn_average_days["$day"]    = deepcopy(test_case_bs_mn_average)
+    test_case_bs_mn_measured_days["$day"]["nw"]   = Dict{String,Any}()
+    test_case_bs_mn_forecasted_days["$day"]["nw"] = Dict{String,Any}()
+    test_case_bs_mn_average_days["$day"]["nw"]    = Dict{String,Any}()
+    nw_day_first_hour = (day-1)*24 + 1
+    nw_day_last_hour = day*24
+    count_hour = 0
+    for hour in nw_day_first_hour:nw_day_last_hour
+        count_hour += 1
+        test_case_bs_mn_measured_days["$day"]["nw"]["$count_hour"]   = deepcopy(test_case_bs_mn_measured_sp["nw"]["$hour"])
+        test_case_bs_mn_forecasted_days["$day"]["nw"]["$count_hour"] = deepcopy(test_case_bs_mn_forecasted_sp["nw"]["$hour"])
+        test_case_bs_mn_average_days["$day"]["nw"]["$count_hour"]    = deepcopy(test_case_bs_mn_average_sp["nw"]["$hour"])
+    end
+end
+
+
+
 #########################################################################
-results_one_topology_sp_forecasted = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi_bs; setting = s)
-results_one_topology_sp_measured = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_measured,LPACCPowerModel,gurobi_bs; setting = s)
-results_one_topology_sp_average = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_average,LPACCPowerModel,gurobi_bs; setting = s)
-results_one_topology_sp_stochastic = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_expected,LPACCPowerModel,gurobi_bs; setting = s)
-results_one_topology_sp_adjusted = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_adjusted,LPACCPowerModel,gurobi_bs; setting = s)
+results_one_topology_sp_forecasted = Dict{String,Any}()
+results_one_topology_sp_measured   = Dict{String,Any}()
+results_one_topology_sp_average    = Dict{String,Any}()
+for day in 2:n_days
+    results_one_topology_sp_forecasted["$day"] = Dict{String,Any}()
+    #results_one_topology_sp_measured["$day"]   = Dict{String,Any}()
+    #results_one_topology_sp_average["$day"]    = Dict{String,Any}()    
+    results_one_topology_sp_forecasted["$day"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_mn_forecasted_days["$day"],LPACCPowerModel,gurobi_bs; setting = s)
+    #results_one_topology_sp_measured["$day"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_mn_measured_days["$day"],LPACCPowerModel,gurobi_bs; setting = s)
+    #results_one_topology_sp_average["$day"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_mn_average,LPACCPowerModel,gurobi_bs; setting = s)
+end
+
+
+[results_one_topology_sp_measured["$day"]["objective"] for day in 1:14]
 
 json_results_one_topology_sp_forecasted = JSON.json(results_one_topology_sp_forecasted)
 open(joinpath(results_folder,case,"24_hours_BS_one_topology_forecasted_$(first_hour)_$(last_hour).json"),"w") do f 
@@ -595,8 +501,6 @@ open(joinpath(results_folder,case,"24_hours_BS_one_topology_adjusted_4_scenarios
 end 
 
 ################################################
-
-results_one_topology_sp_stochastic["solution"][]
 
 
 ####################################################

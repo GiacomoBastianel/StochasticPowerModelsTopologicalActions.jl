@@ -7,7 +7,7 @@ import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerMo
 using JuMP, Juniper, HSL_jll, MathOptInterface, HiGHS
 using Statistics
 
-mip_gap = 1e-3
+mip_gap = 5e-4
 max_hours_simulations = 6.5
 gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 3600*max_hours_simulations,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2) 
 gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-6,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
@@ -60,19 +60,27 @@ feasibility_check_input = deepcopy(test_case_bs)
 _PMTP.prepare_AC_feasibility_check(result_bs_6,feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
 result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,ACPPowerModel,ipopt; setting = s)
 
-
 #########################################################################################
 # Upload scenarios
-n_scenarios = 4
-n_hours = 24
+#first_hour = 355 
+#last_hour = 378
+#n_scenarios = 4
+
+first_hour = 8153
+last_hour  = 8486
+n_scenarios = 8
+
+n_hours = last_hour - first_hour + 1
+
 _SPMTA.add_dimensions!(test_case_bs,n_scenarios,n_hours)
 
 input_data_folder = joinpath(@__DIR__,"case30")
-first_hour = 355 
-last_hour = 378
 
-forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
-measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
+#forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
+#measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
+
+forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
+measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_two_weeks_$(first_hour)_$(last_hour).json"))
 
 # Adjust name of the file here
 scenarios_wind_simulations = JSON.parsefile(joinpath(@__DIR__,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
@@ -110,7 +118,6 @@ for hour in 1:n_hours
     opf_hour_lpac = sum(result_expected_24_lpac["$h"]["objective"]*test_case_opf_mn_expected["nw"]["$h"]["probability"] for h in first_n:last_n)
     push!(obj_expected_24_lpac,opf_hour_lpac)
 end
-exp_ = sum(obj_expected_24_ac)
 
 json_hourly_expected_24 = JSON.json(result_expected_24_ac)
 open(joinpath(results_folder,case,"Hourly_opf_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
