@@ -110,9 +110,9 @@ _SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_average,n_hours,one_scenar
 
 
 for i in 1:(n_hours*one_scenario)
-    test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
-    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
-    test_case_opf_mn_average["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*average_forecasted_measured_wind[i])
+    test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
+    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_opf_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
+    test_case_opf_mn_average["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate_one_scenario["nw"]["$i"]["gen"]["1"]["pmax"]*average_forecasted_measured_wind[i])
 end
 
 ################################################################################
@@ -442,7 +442,9 @@ for day in 1:n_days
     test_case_bs_mn_measured_days["$day"]   = deepcopy(test_case_bs_mn_measured_sp)
     test_case_bs_mn_measured_days["$day"]["hours"] = 24
     test_case_bs_mn_forecasted_days["$day"] = deepcopy(test_case_bs_mn_forecasted)
+    test_case_bs_mn_forecasted_days["$day"]["hours"] = 24
     test_case_bs_mn_average_days["$day"]    = deepcopy(test_case_bs_mn_average)
+    test_case_bs_mn_average_days["$day"]["hours"] = 24
     test_case_bs_mn_measured_days["$day"]["nw"]   = Dict{String,Any}()
     test_case_bs_mn_forecasted_days["$day"]["nw"] = Dict{String,Any}()
     test_case_bs_mn_average_days["$day"]["nw"]    = Dict{String,Any}()
@@ -463,7 +465,7 @@ end
 results_one_topology_sp_forecasted = Dict{String,Any}()
 results_one_topology_sp_measured   = Dict{String,Any}()
 results_one_topology_sp_average    = Dict{String,Any}()
-for day in 2:n_days
+for day in 1:1
     results_one_topology_sp_forecasted["$day"] = Dict{String,Any}()
     #results_one_topology_sp_measured["$day"]   = Dict{String,Any}()
     #results_one_topology_sp_average["$day"]    = Dict{String,Any}()    
@@ -490,80 +492,49 @@ open(joinpath(results_folder,case,"24_hours_BS_one_topology_average_$(first_hour
     write(f, json_results_one_topology_sp_average) 
 end 
 
-json_results_one_topology_sp_stochastic = JSON.json(results_one_topology_sp_stochastic)
-open(joinpath(results_folder,case,"24_hours_BS_one_topology_stochastic_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_25_06_25200.json"),"w") do f 
-    write(f, json_results_one_topology_sp_stochastic) 
-end 
-
-json_results_one_topology_sp_adjusted = JSON.json(results_one_topology_sp_adjusted)
-open(joinpath(results_folder,case,"24_hours_BS_one_topology_adjusted_4_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_results_one_topology_sp_adjusted) 
-end 
-
 ################################################
 
 
 ####################################################
 
-test_case_bs_mn_forecasted_try_max_sw = deepcopy(test_case_bs_mn_forecasted)
-test_case_bs_mn_measured_try_max_sw = deepcopy(test_case_bs_mn_measured)
-test_case_bs_mn_average_try_max_sw = deepcopy(test_case_bs_mn_average)
-test_case_bs_mn_expected_try_max_sw = deepcopy(test_case_bs_mn_expected)
-test_case_bs_mn_adjusted_try_max_sw = deepcopy(test_case_bs_mn_adjusted)
+test_case_bs_mn_forecasted_max_sw = deepcopy(test_case_bs_mn_forecasted_days)
+test_case_bs_mn_measured_max_sw = deepcopy(test_case_bs_mn_measured_days)
+test_case_bs_mn_average_max_sw = deepcopy(test_case_bs_mn_average_days)
 
-test_case_bs_mn_forecasted["total_switching_actions"] = 1
-test_case_bs_mn_measured["total_switching_actions"] = 1
-test_case_bs_mn_average["total_switching_actions"] = 1
-test_case_bs_mn_expected["total_switching_actions"] = 1
-test_case_bs_mn_adjusted["total_switching_actions"] = 1
+for day in 1:n_days
+    test_case_bs_mn_forecasted_max_sw["$day"]["total_switching_actions"] = 1
+    test_case_bs_mn_measured_max_sw["$day"]["total_switching_actions"] = 1
+    test_case_bs_mn_average_max_sw["$day"]["total_switching_actions"] = 1
 
-for (sw_id,sw) in test_case_bs_mn_forecasted["nw"]["1"]["switch"]
-    sw["maximum_actions"] = 1
-end
-for (sw_id,sw) in test_case_bs_mn_measured["nw"]["1"]["switch"]
-    sw["maximum_actions"] = 1
-end
-for (sw_id,sw) in test_case_bs_mn_average["nw"]["1"]["switch"]
-    sw["maximum_actions"] = 1
-end
-for (sw_id,sw) in test_case_bs_mn_expected["nw"]["1"]["switch"]
-    sw["maximum_actions"] = 1
-end
-for (sw_id,sw) in test_case_bs_mn_adjusted["nw"]["1"]["switch"]
-    sw["maximum_actions"] = 1
+    for (sw_id,sw) in test_case_bs_mn_forecasted_max_sw["$day"]["nw"]["1"]["switch"]
+        sw["maximum_actions"] = 1
+    end
+    for (sw_id,sw) in test_case_bs_mn_measured_max_sw["$day"]["nw"]["1"]["switch"]
+        sw["maximum_actions"] = 1
+    end
+    for (sw_id,sw) in test_case_bs_mn_average_max_sw["$day"]["nw"]["1"]["switch"]
+        sw["maximum_actions"] = 1
+    end
 end
 
-results_one_topology_sp_forecasted_one_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_forecasted,LPACCPowerModel,gurobi_bs)
-results_one_topology_sp_measured_one_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_measured,LPACCPowerModel,gurobi_bs)
-results_one_topology_sp_average_one_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_mn_average,LPACCPowerModel,gurobi_bs)
-results_one_topology_sp_expected_one_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches_stochastic(test_case_bs_mn_expected,LPACCPowerModel,gurobi_bs)
-results_one_topology_sp_adjusted_one_max_sw = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches_stochastic(test_case_bs_mn_adjusted,LPACCPowerModel,gurobi)
+results_one_topology_sp_forecasted_one_max_sw = Dict{String,Any}()
+results_one_topology_sp_measured_one_max_sw   = Dict{String,Any}()
+results_one_topology_sp_average_one_max_sw    = Dict{String,Any}()
 
 
-json_results_one_topology_sp_forecasted_one_max_sw = JSON.json(results_one_topology_sp_forecasted_one_max_sw)
-open(joinpath(results_folder,case,"One_maximum_actions_24_hours_forecasted_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_results_one_topology_sp_forecasted_one_max_sw) 
-end 
-
-json_results_one_topology_sp_measured_one_max_sw = JSON.json(results_one_topology_sp_measured_one_max_sw)
-open(joinpath(results_folder,case,"One_maximum_actions_24_hours_measured_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_results_one_topology_sp_measured_one_max_sw) 
-end 
-
-json_results_one_topology_sp_average_one_max_sw = JSON.json(results_one_topology_sp_average_one_max_sw)
-open(joinpath(results_folder,case,"One_maximum_actions_24_hours_average_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_results_one_topology_sp_average_one_max_sw) 
-end 
-
-json_results_one_topology_sp_expected_one_max_sw = JSON.json(results_one_topology_sp_expected_one_max_sw)
-open(joinpath(results_folder,case,"One_maximum_actions_24_hours_expected_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_results_one_topology_sp_expected_one_max_sw) 
-end 
-
-json_results_one_topology_sp_adjusted_one_max_sw = JSON.json(results_one_topology_sp_adjusted_one_max_sw)
-open(joinpath(results_folder,case,"One_maximum_actions_24_hours_adjusted_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_results_one_topology_sp_adjusted_one_max_sw) 
-end 
+function run_simulation_days(input_dict,result_dict,name_result_file)
+    for day in 1:n_days
+        result_dict["$day"] = Dict{String,Any}()
+        result_dict["$day"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(input_dict["$day"],LPACCPowerModel,gurobi_bs; setting = s)
+    end
+    json_result_dict = JSON.json(result_dict)
+    open(joinpath(results_folder,case,"$(name_result_file)_$(first_hour)_$(last_hour).json"),"w") do f 
+        write(f, json_result_dict) 
+    end 
+end
+run_simulation_days(test_case_bs_mn_forecasted_max_sw,results_one_topology_sp_forecasted_one_max_sw,"One_maximum_actions_24_hours_forecasted")
+run_simulation_days(test_case_bs_mn_measured_max_sw,results_one_topology_sp_measured_one_max_sw,"One_maximum_actions_24_hours_measured")
+run_simulation_days(test_case_bs_mn_average_max_sw,results_one_topology_sp_average_one_max_sw,"One_maximum_actions_24_hours_average")
 
 
 #######
