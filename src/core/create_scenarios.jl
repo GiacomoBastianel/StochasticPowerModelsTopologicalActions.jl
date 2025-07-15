@@ -180,11 +180,12 @@ diff_P50_measured_quarterly = P50_11h_quarterly - measured_quarterly
 count(>(0), diff_P50_measured_quarterly)/length(diff_P50_measured_quarterly)
 1 - 0.6109
 
-scatter(measured,diff_measured_P50,ylabel = "Difference between measured and forecasted values",xlabel = "Measured capacity factor [-]", label = :none, ylabelfontsize = 8, xlabelfontsize = 8, xlims = (-0.05,1.0), ylims = (-1.0,1.0), yticks = -1.0:0.2:1.0)
+
+scatter(measured,diff_measured_P50,ylabel = "Difference between measured and forecasted D-1, 11 am values",xlabel = "Measured capacity factor [-]", label = :none, ylabelfontsize = 7, xlabelfontsize = 9, xlims = (-0.05,1.0), ylims = (-1.0,1.0), yticks = -1.0:0.2:1.0,legend = :topright, ticksfontsize = 7)
 avg_measured = mean(measured)
 avg_forecasted = mean(P50_11h)
 vline!([avg_measured], label = "Mean measured value", color = :red, lw=2)
-vline!([avg_forecasted], label = "Mean forecasted value", color = :brown, lw=2)
+vline!([avg_forecasted], label = "Mean forecasted D-1, 11 am value", color = :brown, lw=2)
 
 figures_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Figures/RES_uncertainty"
 savefig(joinpath(figures_folder, "Difference_measured_P50_$(year_wind).pdf"))
@@ -380,8 +381,8 @@ for i in hours_simulation_Elia
 end
 
 
-samples_pu_total = [scenarios_wind["$h"]["samples_pu"] for h in 1:(n_hours*n_scenarios)]
-scatter(samples_pu_total)
+#samples_pu_total = [scenarios_wind["$h"]["samples_pu"] for h in 1:(n_hours*n_scenarios)]
+#scatter(samples_pu_total)
 
 
 case = "case30"

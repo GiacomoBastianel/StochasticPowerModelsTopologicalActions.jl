@@ -62,12 +62,12 @@ result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,ACPPowerModel,i
 
 #########################################################################################
 # Upload scenarios
-#first_hour = 355 
-#last_hour = 378
+first_hour = 355 
+last_hour = 378
 #n_scenarios = 4
 
-first_hour = 8153
-last_hour  = 8486
+#first_hour = 8153
+#last_hour  = 8486
 n_scenarios = 8
 
 n_hours = last_hour - first_hour + 1
@@ -76,11 +76,11 @@ _SPMTA.add_dimensions!(test_case_bs,n_scenarios,n_hours)
 
 input_data_folder = joinpath(@__DIR__,"case30")
 
-#forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
-#measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
+forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
+measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
 
-forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
-measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_two_weeks_$(first_hour)_$(last_hour).json"))
+#forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
+#measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_two_weeks_$(first_hour)_$(last_hour).json"))
 
 # Adjust name of the file here
 scenarios_wind_simulations = JSON.parsefile(joinpath(@__DIR__,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
