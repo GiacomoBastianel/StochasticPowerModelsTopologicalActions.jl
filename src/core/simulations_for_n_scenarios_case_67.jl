@@ -7,13 +7,13 @@ import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerMo
 using JuMP, Juniper, HSL_jll, MathOptInterface, HiGHS
 using Statistics
 
-mip_gap = 5e-4
-max_hours_simulations = 6.5
+mip_gap = 1e-4
+max_hours_simulations = 4
 gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 3600*max_hours_simulations,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2) 
 gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-6,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
 gurobi_opf = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 600,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>3) 
 gurobi_lpac = JuMP.optimizer_with_attributes(Gurobi.Optimizer)#,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2)
-ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
+ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma57")
 juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 600)
 
 #########################################################################################
@@ -24,35 +24,90 @@ s_dual = Dict("output" => Dict("branch_flows" => true,"duals" => true), "conv_lo
 #########################################################################################
 ## Processing input data
 input_folder = dirname(dirname(@__DIR__))
-test_case_file = joinpath(input_folder,"data_sources/pglib_opf_case30_ieee.m")
+test_case_file = joinpath(input_folder,"data_sources/case24_3zones_acdc.m")
 original_grid = _PM.parse_file(test_case_file)
+_PMACDC.process_additional_data!(original_grid)
+test_case = deepcopy(original_grid)
 
 results_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Results"
 results_folder_figures = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Figures"
-case = "case_30/stochastic_multistep"
+case = "case_24/stochastic_multistep"
 
-test_case = _PM.parse_file(test_case_file)
+
+function add_VOLL_generators(data,gen_to_be_duplicated)
+    first_l = maximum(parse.(Int, keys(data["gen"])))
+    count = 0
+    for (b_id,b) in data["bus"]
+        count += 1
+        l = first_l + count
+        data["gen"]["$l"] = deepcopy(data["gen"]["$gen_to_be_duplicated"])
+        #data["gen"]["$l"]["installed_capacity"] = 99.99
+        data["gen"]["$l"]["gen_bus"] = parse(Int64,b_id) 
+        data["gen"]["$l"]["pmax"] = 99.99
+        #data["gen"]["$l"]["mbase"] = 9999
+        data["gen"]["$l"]["source_id"][2] = deepcopy(l)
+        #data["gen"]["$l"]["gen_type"] = "VOLL"
+        data["gen"]["$l"]["index"] = l 
+        #data["gen"]["$l"]["type"] = "VOLL"
+        data["gen"]["$l"]["cost"][1] = 4400
+    end
+end
+add_VOLL_generators(test_case,1)
+
+
+
+for (g_id,g) in test_case["gen"]
+    g["pmin"] = 0
+end
+for (g_id,g) in test_case["gen"]
+    if length(g["cost"]) > 2
+        g["cost"] = deepcopy(g["cost"][1:2]) 
+    elseif length(g["cost"]) == 0
+        push!(g["cost"],183.846)
+        push!(g["cost"],0.0)
+    end
+end
+
+for (g_id,g) in test_case["gen"]
+    g["ncost"] = 2
+    g["cost"][2] = 0
+    g["cost"][1] = g["cost"][1]*1.3
+end
+
+for (l_id,l) in test_case["load"]
+    if l["pd"] > 2.0
+        l["pd"] = l["pd"]*1.2
+    end
+end
 test_case_opf = deepcopy(test_case)
 
-# THIS IS APPARENTLY FUNDAMENTAL TO GUARANTEE FEASIBILITY
-_SPMTA.add_VOLL_generators(test_case_opf)
-_SPMTA.add_VOLL_generators(test_case)
+#for (g_id,g) in test_case["gen"]
+#    if length(g["cost"]) > 0 && g["cost"][1] == 10000.0
+#        g["cost"][1] = 180.0 # Just to avoid problems with the cost function
+#    end
+#end
 
-opf_30 = _PM.solve_opf(test_case_opf, LPACCPowerModel, ipopt)
+for (g_id,g) in test_case["gen"]
+    println([g_id,g["cost"]])
+end
+
+
+opf_67 = _PMACDC.run_acdcopf(test_case, LPACCPowerModel, ipopt; setting = s)
+opf_67_ac = _PMACDC.run_acdcopf(test_case, ACPPowerModel, ipopt; setting = s_dual)
+
 
 #########################################################################################
 # Busbar splitting
 test_case_bs = deepcopy(test_case_opf)
-splitted_bus_ac = 6
+splitted_bus_ac = 211
 test_case_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_AC_grid(test_case,splitted_bus_ac)
 
 # Adding costs to the busbar couplers
 for sw_id in 1:length(extremes_ZILs_ac)
-    test_case_bs["switch"]["$sw_id"]["cost"] = 10.0
+    test_case_bs["switch"]["$sw_id"]["cost"] = 1.0
 end
 
-result_bs_6 = _PMTP.run_acdcsw_AC_big_M_hour(test_case_bs, LPACCPowerModel, gurobi)
-result_bs_6_no_cost = _PMTP.run_acdcsw_AC_big_M(test_case_bs, LPACCPowerModel, gurobi)
+result_bs_6 = _PMTP.run_acdcsw_AC_big_M_hour(test_case_bs, LPACCPowerModel, gurobi_bs)
 
 
 feasibility_check = deepcopy(test_case_bs)
@@ -62,25 +117,24 @@ result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,ACPPowerModel,i
 
 #########################################################################################
 # Upload scenarios
-first_hour = 355 
-last_hour = 378
+#first_hour = 355 
+#last_hour = 378
 #n_scenarios = 4
 
-#first_hour = 8153
-#last_hour  = 8486
+first_hour = 8153
+last_hour  = 8488
 n_scenarios = 8
 
 n_hours = last_hour - first_hour + 1
 
 _SPMTA.add_dimensions!(test_case_bs,n_scenarios,n_hours)
 
-input_data_folder = joinpath(@__DIR__,"case30")
 
-forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
-measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour).json"))
+#forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"src","core","case30","forecasted_wi_$(first_hour)_$(last_hour)_modified.json"))
+#measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_wind_$(first_hour)_$(last_hour)_modified.json"))
 
-#forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
-#measured_wind = JSON.parsefile(joinpath(input_data_folder,"measured_two_weeks_$(first_hour)_$(last_hour).json"))
+forecasted_wind = JSON.parsefile(joinpath(input_folder,"src","core","case30","forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
+measured_wind = JSON.parsefile(joinpath(input_folder,"src","core","case30","measured_two_weeks_$(first_hour)_$(last_hour).json"))
 
 # Adjust name of the file here
 scenarios_wind_simulations = JSON.parsefile(joinpath(@__DIR__,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
@@ -94,9 +148,17 @@ test_case_opf_replicate = _PM.replicate(test_case_opf, n_hours*n_scenarios)
 test_case_opf_mn_expected = deepcopy(test_case_opf_replicate)
 _SPMTA.adding_multinetwork_scenarios(test_case_opf_mn_expected,n_hours,n_scenarios,scenarios_wind_simulations)
 
-for i in 1:(n_hours*n_scenarios)
-    test_case_opf_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind_simulations["$i"]["samples_pu"])
+
+for (g_id,g) in test_case["gen"]
+    if length(test_case["gen"][g_id]["cost"]) > 0 && test_case["gen"][g_id]["cost"][1] <= 0.14 #&& test_case["gen"][g_id]["cost"][1] <= 750.0 
+        for i in 1:(n_hours*n_scenarios)
+            println("Generator $g_id, cost $(test_case["gen"][g_id]["cost"]), pmax $(test_case["gen"][g_id]["pmax"]) MW")
+            test_case_opf_mn_expected["nw"]["$i"]["gen"][g_id]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"][g_id]["pmax"]*scenarios_wind_simulations["$i"]["samples_pu"])
+            println("Pmax gen $(g_id) is $(test_case_opf_mn_expected["nw"]["$i"]["gen"][g_id]["pmax"])") 
+        end
+    end
 end
+
 
 ################################################################################
 # OPF scenarios
@@ -104,8 +166,8 @@ result_expected_24_ac = Dict{String,Any}()
 result_expected_24_lpac = Dict{String,Any}()
 
 for hour in 1:(n_hours*n_scenarios)
-    result_expected_24_ac["$hour"] = _PM.solve_opf(test_case_opf_mn_expected["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
-    result_expected_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_expected["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
+    result_expected_24_ac["$hour"] = _PMACDC.run_acdcopf(test_case_opf_mn_expected["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
+    result_expected_24_lpac["$hour"] = _PMACDC.run_acdcopf(test_case_opf_mn_expected["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
 end
 
 obj_expected_24_ac = []
@@ -132,8 +194,14 @@ test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours*n_scenarios)
 test_case_bs_mn_expected = deepcopy(test_case_bs_replicate)
 _SPMTA.adding_multinetwork_scenarios(test_case_bs_mn_expected,n_hours,n_scenarios,scenarios_wind_simulations)
 
-for i in 1:(n_hours*n_scenarios)
-    test_case_bs_mn_expected["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*scenarios_wind_simulations["$i"]["samples_pu"])
+for (g_id,g) in test_case["gen"]
+    if length(test_case["gen"][g_id]["cost"]) > 0 && test_case["gen"][g_id]["cost"][1] <= 0.14 #&& test_case["gen"][g_id]["cost"][1] <= 750.0 
+        for i in 1:(n_hours*n_scenarios)
+            println("Generator $g_id, cost $(test_case["gen"][g_id]["cost"]), pmax $(test_case["gen"][g_id]["pmax"]) MW")
+            test_case_bs_mn_expected["nw"]["$i"]["gen"][g_id]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"][g_id]["pmax"]*scenarios_wind_simulations["$i"]["samples_pu"])
+            println("Pmax gen $(g_id) is $(test_case_bs_mn_expected["nw"]["$i"]["gen"][g_id]["pmax"])") 
+        end
+    end
 end
 
 test_case_bs_mn_expected_sp = deepcopy(test_case_bs_mn_expected)
@@ -153,7 +221,8 @@ for hour in 1:n_hours
     end
 end
 
-n_days = 1
+
+n_days = 14
 n_hours_per_day = 24
 for day in 1:n_days
     result_bs_hourly_expected = Dict{String,Any}()
@@ -170,7 +239,7 @@ for day in 1:n_days
         count_scenarios = 0
         for i in first_n:last_n
             count_scenarios += 1
-            hourly_grid_stochastic["nw"]["$count_scenarios"] = deepcopy(test_case_bs_mn_expected_hours_sp["$day"]["nw"]["$i"])
+            hourly_grid_stochastic["nw"]["$count_scenarios"] = deepcopy(test_case_bs_mn_expected_hours_sp["$hour"]["nw"]["$i"])
         end
         result_bs_hourly_expected["$hour"] = Dict{String,Any}()
         result_bs_hourly_expected["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(hourly_grid_stochastic,LPACCPowerModel,gurobi_bs; setting = s)
@@ -181,12 +250,16 @@ for day in 1:n_days
     end 
 end
 
+result_try = JSON.parsefile(joinpath(results_folder,case,"Hourly_bs_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_day_1.json"))
 
- 
-json_hourly_expected_24 = JSON.json(result_bs_hourly_expected_24)
-open(joinpath(results_folder,case,"Hourly_bs_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"),"w") do f 
-    write(f, json_hourly_expected_24) 
-end 
+obj_hourly = [result_try["$h"]["objective"] for h in 1:n_hours_per_day]
+obj_expected_24_lpac
+
+sum(result_expected_24_ac["$h"]["objective"]*test_case_opf_mn_expected["nw"]["$h"]["probability"] for h in 1:(n_hours*n_scenarios))
+sum(obj_hourly)
+
+1 - sum(obj_hourly)/sum(result_expected_24_ac["$h"]["objective"]*test_case_opf_mn_expected["nw"]["$h"]["probability"] for h in 1:(n_hours*n_scenarios))
+
 
 #########################################################################
 # I should set a starting point here

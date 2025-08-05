@@ -58,6 +58,8 @@ test_case_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_A
 #########################################################################################
 # Uploading time series
 scenario_wind = JSON.parsefile(joinpath(input_folder,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
+scenario_wind_6 = JSON.parsefile(joinpath(input_folder,"case30","Laplace_6_scenarios_$(first_hour)_$(last_hour).json"))
+scenario_wind_8 = JSON.parsefile(joinpath(input_folder,"case30","Laplace_8_scenarios_$(first_hour)_$(last_hour).json"))
 
 # Uploading results
 hourly_opf = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_opf_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
@@ -65,9 +67,9 @@ hourly_opf_measured = JSON.parsefile(joinpath(results_folder,"case_30","stochast
 hourly_opf_average = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_opf_average_$(first_hour)_$(last_hour).json"))
 hourly_opf_forecasted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_opf_forecasted_$(first_hour)_$(last_hour).json"))
 
-hourly_bs_measured = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep",  "Hourly_bs_measured_$(first_hour)_$(last_hour).json"))
-hourly_bs_average = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep",   "Hourly_bs_average_$(first_hour)_$(last_hour).json"))
-hourly_bs_forecasted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_forecasted_$(first_hour)_$(last_hour).json"))
+hourly_bs_measured = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep",  "Hourly_bs_measured_$(first_hour)_$(last_hour)_all_days.json"))
+hourly_bs_average = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep",   "Hourly_bs_average_$(first_hour)_$(last_hour)_all_days.json"))
+hourly_bs_forecasted = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep","Hourly_bs_forecasted_$(first_hour)_$(last_hour)_all_days.json"))
 
 one_sw_measured = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep",  "One_maximum_actions_24_hours_measured_$(first_hour)_$(last_hour).json"))
 one_sw_average = JSON.parsefile(joinpath(results_folder,"case_30","stochastic_multistep",   "One_maximum_actions_24_hours_average_$(first_hour)_$(last_hour).json"))
@@ -86,38 +88,117 @@ input_data_folder = joinpath(@__DIR__)
 #forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"case30","forecasted_wind_hours_$(first_hour)_$(last_hour).json"))
 #measured_wind = JSON.parsefile(joinpath(input_data_folder,"case30","measured_wind_$(first_hour)_$(last_hour).json"))
 
-forecasted_wind = JSON.parsefile(joinpath(input_data_folder,"case30","forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
-measured_wind = JSON.parsefile(joinpath(input_data_folder,"case30","measured_two_weeks_$(first_hour)_$(last_hour).json"))
+forecasted_wind = JSON.parsefile(joinpath(input_folder,"case30","forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
+measured_wind = JSON.parsefile(joinpath(input_folder,"case30","measured_two_weeks_$(first_hour)_$(last_hour).json"))
+average_wind = [mean([forecasted_wind[i],measured_wind[i]]) for i in 1:length(forecasted_wind)]
 
 # Adjust name of the file here
-scenarios_wind_simulations = JSON.parsefile(joinpath(input_data_folder,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
+scenarios_wind_simulations = JSON.parsefile(joinpath(input_folder,"case30","Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
 
 #########################################################################################
 # Upload results
-hourly_bs_days = Dict{String,Any}()
-for day in 1:n_days
-    hourly_bs_days["$day"] = Dict{String,Any}()
-    hourly_bs_days["$day"] = JSON.parsefile(joinpath(results_folder,case,"Hourly_bs_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))
+function create_dict_results(n_days,results_folder,case,first_hour,last_hour,file_name)
+    results_dict = Dict{String,Any}()
+    for day in 1:n_days
+        results_dict["$day"] = Dict{String,Any}()
+        results_dict_day = JSON.parsefile(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_day_$(day).json"))
+        results_dict["$day"] = results_dict_day["$day"]
+    end
+    json_result_check = JSON.json(results_dict)
+    open(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+        write(f, json_result_check) 
+    end  
+    return results_dict
+end
+types = ["forecasted","average","measured"]
+for type in types
+    create_dict_results(n_days,results_folder,case,first_hour,last_hour,"One_topology_$(type)")    
 end
 
-one_topology_bs_days = Dict{String,Any}()
-for day in 1:n_days
-    one_topology_bs_days["$day"] = Dict{String,Any}()
-    one_topology_bs_days["$day"] = JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_one_topology_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))
+
+function create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,hours_per_day,n_scenarios,file_name)
+    results_dict = Dict{String,Any}()
+    for day in 1:n_days
+        results_dict["$day"] = Dict{String,Any}()
+        results_dict_day = JSON.parsefile(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_day_$(day).json"))
+        for hour in 1:n_hours_per_day
+            if haskey(results_dict_day,"$hour")
+                println("Day $day, Hour $hour")
+                results_dict["$day"]["$hour"] = Dict{String,Any}()
+                results_dict["$day"]["$hour"] = deepcopy(results_dict_day["$hour"])
+            elseif haskey(results_dict_day,"solution")
+                results_dict["$day"]["$hour"] = Dict{String,Any}()
+                for n in 1:n_scenarios
+                    println("Day $day, Hour $hour, Scenario $n")
+                    this_scenario = (hour - 1)*n_scenarios + n
+                    results_dict["$day"]["$hour"]["$n"] = Dict{String,Any}()
+                    results_dict["$day"]["$hour"]["$n"] = deepcopy(results_dict_day["solution"]["nw"]["$this_scenario"])
+                    results_dict["$day"]["$hour"]["$n"]["day"]  = deepcopy(day)
+                    results_dict["$day"]["$hour"]["$n"]["hour"] = deepcopy(hour)
+                    results_dict["$day"]["$hour"]["$n"]["scenario"] = deepcopy(n)
+                end 
+            end
+        end
+    end
+    json_result_check = JSON.json(results_dict)
+    open(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+        write(f, json_result_check) 
+    end  
+    return results_dict
 end
 
-one_sw_bs_days = Dict{String,Any}()
-for day in 1:n_days
-    one_sw_bs_days["$day"] = Dict{String,Any}()
-    one_sw_bs_days["$day"] = JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_one_sw_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))
+
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,"Hourly_bs_stochastic_Laplace_6_scenarios")
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,"Hourly_bs_stochastic_Laplace_8_scenarios")
+
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,6,"24_hours_BS_one_topology_stochastic_Laplace_6_scenarios")
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,8,"24_hours_BS_one_topology_stochastic_Laplace_8_scenarios")
+
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,6,"24_hours_BS_one_sw_stochastic_Laplace_6_scenarios")
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,8,"24_hours_BS_one_sw_stochastic_Laplace_8_scenarios")
+
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,6,"24_hours_BS_two_sw_stochastic_Laplace_6_scenarios")
+create_dict_results_scenarios(n_days,results_folder,case,first_hour,last_hour,n_hours_per_day,8,"24_hours_BS_two_sw_stochastic_Laplace_8_scenarios")
+
+
+function create_dict_results_hourly(n_days,results_folder,case,first_hour,last_hour,file_name,type)
+    results_dict = Dict{String,Any}()
+    result_hourly = JSON.parsefile(joinpath(results_folder,case,"$(file_name)_$(type)_$(first_hour)_$(last_hour).json"))
+    for day in 1:n_days
+        results_dict["$day"] = Dict{String,Any}()
+        for hour in 1:n_hours_per_day
+            this_hour = (day - 1)*n_hours_per_day + hour
+            results_dict["$day"]["$hour"] = result_hourly["$this_hour"]
+        end
+    end
+    json_result_check = JSON.json(results_dict)
+    open(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+        write(f, json_result_check) 
+    end  
+end
+types = ["forecasted","average","measured"]
+for type in types
+    create_dict_results_hourly(n_days,results_folder,case,first_hour,last_hour,"hourly_bs",type)    
 end
 
-two_sw_bs_days = Dict{String,Any}()
-for day in 1:n_days
-    two_sw_bs_days["$day"] = Dict{String,Any}()
-    two_sw_bs_days["$day"] = JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_two_sw_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))
+
+
+function upload_results(n_days,results_folder,case,first_hour,last_hour,file_name)
+    results_dict = Dict{String,Any}()
+    for day in 1:n_days
+        results_dict["$day"] = Dict{String,Any}()
+        results_dict_day = JSON.parsefile(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_day_$(day).json"))
+        results_dict["$day"] = results_dict_day["$day"]
+    end
+    return results_dict
 end
 
+function upload_results_all_days(results_folder,case,first_hour,last_hour,file_name)
+    results_dict = JSON.parsefile(joinpath(results_folder,case,"$(file_name)_$(first_hour)_$(last_hour)_all_days.json"))
+end
+
+type = "forecasted"
+one_topology_all_days = upload_results(n_days,results_folder,case,first_hour,last_hour,"One_topology_$(type)")
 
 
 #########################################################################################
@@ -167,27 +248,77 @@ end
 result_feasibility_checks = Dict{String,Any}()
 
 
-function feasibility_check_days(result_dict,result_bs,data_dict)
+function feasibility_check_days(result_bs,scenario_wind,time_series,n_scenarios,simulation,type,first_hour,last_hour)
+    result_dict = Dict{String,Any}()
+    data_dict = Dict{String,Any}()
     test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours*n_scenarios)
     test_case_bs_scenarios = deepcopy(test_case_bs_replicate)
-    for day in 1:n_days
-        data_dict["$day"] = Dict{String,Any}()
-        result_dict["$day"] = Dict{String,Any}()
-        for h in 1:n_hours_per_day
-            data_dict["$day"]["$h"] = Dict{String,Any}()
-            result_dict["$day"]["$h"] = Dict{String,Any}()
-            for s in 1:n_scenarios
-                println("Day: $day, Hour: $h, Scenario: $s")
-                data_dict["$day"]["$h"]["$s"] = Dict{String,Any}()
-                result_dict["$day"]["$h"]["$s"] = Dict{String,Any}()
-                index = (day - 1)*n_hours_per_day*n_scenarios + (h - 1)*n_scenarios + s
-                test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]*scenario_wind["$index"]["samples_pu"])
-                adding_multinetwork_scenario_days(test_case_bs_scenarios,n_hours,s,n_scenarios,scenario_wind,index,h)
+    if n_scenarios > 1
+        for day in 1:n_days
+            data_dict["$day"] = Dict{String,Any}()
+            result_dict["$day"] = Dict{String,Any}()
+            for h in 1:n_hours_per_day
+                data_dict["$day"]["$h"] = Dict{String,Any}()
+                result_dict["$day"]["$h"] = Dict{String,Any}()
+                #if haskey(result_bs[["$day"]["$h"],"solution"])
+                    for s in 1:n_scenarios
+                        println("Day: $day, Hour: $h, Scenario: $s")
+                        data_dict["$day"]["$h"]["$s"] = Dict{String,Any}()
+                        result_dict["$day"]["$h"]["$s"] = Dict{String,Any}()
+                        index = (day - 1)*n_hours_per_day*n_scenarios + (h - 1)*n_scenarios + s
+                        test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]*scenario_wind["$index"]["samples_pu"])
+                        adding_multinetwork_scenario_days(test_case_bs_scenarios,n_hours,s,n_scenarios,scenario_wind,index,h)
+                        #result_dict["$index"] = Dict{String,Any}()
+                        run_feasibility_checks_per_hour_days(test_case_bs_scenarios,result_bs,result_dict,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,sc,day,h,n_hours,n_scenarios,index,s,data_dict)            
+                    end
+                #else
+                #    for s in 1:n_scenarios
+                #        println("Day: $day, Hour: $h, Scenario: $s")
+                #        data_dict["$day"]["$h"]["$s"] = Dict{String,Any}()
+                #        result_dict["$day"]["$h"]["$s"] = Dict{String,Any}()
+                #        index = (day - 1)*n_hours_per_day*n_scenarios + (h - 1)*n_scenarios + s
+                #        test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]*scenario_wind["$index"]["samples_pu"])
+                #        adding_multinetwork_scenario_days(test_case_bs_scenarios,n_hours,s,n_scenarios,scenario_wind,index,h)
+                #        #result_dict["$index"] = Dict{String,Any}()
+                #        run_feasibility_checks_per_hour_days(test_case_bs_scenarios,result_bs,result_dict,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,sc,day,h,n_hours,n_scenarios,index,s,data_dict)            
+                #    end
+                #end
+            end
+        end
+        json_feasibility_check = JSON.json(result_dict)
+        json_data_check = JSON.json(data_dict)
+        open(joinpath(results_folder,case,"fc_$(simulation)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+            write(f, json_feasibility_check) 
+        end 
+        open(joinpath(results_folder,case,"fc_data_$(simulation)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+            write(f, json_data_check) 
+        end 
+    else
+        for day in 1:n_days
+            data_dict["$day"] = Dict{String,Any}()
+            result_dict["$day"] = Dict{String,Any}()
+            for h in 1:n_hours_per_day
+                data_dict["$day"]["$h"] = Dict{String,Any}()
+                result_dict["$day"]["$h"] = Dict{String,Any}()
+                println("Day: $day, Hour: $h, One Scenario")
+                index = (day - 1)*n_hours_per_day + h
+                test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_scenarios["nw"]["$index"]["gen"]["1"]["pmax"]*time_series[index])
+                adding_multinetwork_scenario_days(test_case_bs_scenarios,n_hours,s,n_scenarios,time_series,index,h)
                 #result_dict["$index"] = Dict{String,Any}()
                 run_feasibility_checks_per_hour_days(test_case_bs_scenarios,result_bs,result_dict,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf,sc,day,h,n_hours,n_scenarios,index,s,data_dict)            
             end
         end
+        json_feasibility_check = JSON.json(result_dict)
+        json_data_check = JSON.json(data_dict)
+        open(joinpath(results_folder,case,"fc_$(simulation)_$(type)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+            write(f, json_feasibility_check) 
+        end 
+        open(joinpath(results_folder,case,"fc_data_$(simulation)_$(type)_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
+            write(f, json_data_check) 
+        end 
     end
+
+
     return result_dict
 end
 
@@ -214,165 +345,153 @@ end
 
 function run_feasibility_checks_per_hour_days(grid, result_bs,result_feasibility_checks, model, optimizer,switches_couples_ac,extremes_ZILs_ac,test_case_opf,settings,day,hour,n_hours,n_scenarios,index,scenario,data_dict)
     #result_feasibility_checks = Dict{String,Any}()
-    if haskey(result_bs["$day"],"$hour")
-        #result_feasibility_checks["$day"] = Dict{String,Any}()
-        feasibility_check = deepcopy(grid["nw"]["$index"])
-        feasibility_check_input = deepcopy(grid["nw"]["$index"])
-        _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["$hour"]["solution"]["nw"]["$scenario"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
-        println("Feasibility check for day $day, hour $hour, scenario $scenario, index $index")
-        data_dict["$day"]["$hour"]["$scenario"] = feasibility_check
-        result_feasibility_checks["$day"]["$hour"]["$scenario"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
-        result_feasibility_checks["$day"]["$hour"]["$scenario"]["probability"] = grid["nw"]["$index"]["probability"]    
-    elseif haskey(result_bs["$day"],"solution")
-        feasibility_check = deepcopy(grid["nw"]["$index"])
-        feasibility_check_input = deepcopy(grid["nw"]["$index"])
-        timestep = (hour - 1)*n_scenarios + scenario
-        _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["solution"]["nw"]["$timestep"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
-        println("Feasibility check for day $day, hour $hour, scenario $scenario, index $index")
-        data_dict["$day"]["$hour"]["$scenario"] = feasibility_check
-        result_feasibility_checks["$day"]["$hour"]["$scenario"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
-        result_feasibility_checks["$day"]["$hour"]["$scenario"]["probability"] = grid["nw"]["$index"]["probability"]    
-    end
-end
-
-
-test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours*n_scenarios)
-test_case_bs_scenarios = deepcopy(test_case_bs_replicate)
-
-
-result_feasibility_checks = Dict{String,Any}()
-data_check = Dict{String,Any}()
-feasibility_check_days(result_feasibility_checks,hourly_bs_days,data_check)
-
-result_feasibility_checks_one_topology = Dict{String,Any}()
-data_check_one_topology = Dict{String,Any}()
-feasibility_check_days(result_feasibility_checks_one_topology,one_topology_bs_days,data_check_one_topology)
-
-result_feasibility_checks_one_topology = Dict{String,Any}()
-data_check_one_topology = Dict{String,Any}()
-feasibility_check_days(result_feasibility_checks_one_topology,one_topology_bs_days,data_check_one_topology)
-
-result_feasibility_checks_one_sw = Dict{String,Any}()
-data_check_one_sw = Dict{String,Any}()
-feasibility_check_days(result_feasibility_checks_one_sw,one_sw_bs_days,data_check_one_sw)
-
-
-result_feasibility_checks_two_sw = Dict{String,Any}()
-data_check_two_sw = Dict{String,Any}()
-feasibility_check_days(result_feasibility_checks_two_sw,two_sw_bs_days,data_check_two_sw)
-
-
-obj_one_topology = []
-obj_hourly_bs = []
-obj_one_sw = []
-obj_two_sw = []
-for day in 1:n_days
-    for hour in 1:n_hours_per_day
-        for scenario in 1:n_scenarios
-            if haskey(result_feasibility_checks["$day"]["$hour"],"$scenario")
-                push!(obj_hourly_bs,result_feasibility_checks["$day"]["$hour"]["$scenario"]["objective"])
+    if n_scenarios > 1
+        if haskey(result_bs["$day"],"$hour")
+            if haskey(result_bs["$day"]["$hour"],"$scenario")
+                feasibility_check = deepcopy(grid["nw"]["$index"])
+                feasibility_check_input = deepcopy(grid["nw"]["$index"])
+                _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["$hour"]["$scenario"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+                println("Feasibility check for day $day, hour $hour, scenario $scenario, index $index")
+                data_dict["$day"]["$hour"]["$scenario"] = feasibility_check
+                result_feasibility_checks["$day"]["$hour"]["$scenario"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
+                result_feasibility_checks["$day"]["$hour"]["$scenario"]["probability"] = grid["nw"]["$index"]["probability"]    
+            else
+                #result_feasibility_checks["$day"] = Dict{String,Any}()
+                feasibility_check = deepcopy(grid["nw"]["$index"])
+                feasibility_check_input = deepcopy(grid["nw"]["$index"])
+                _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["$hour"]["solution"]["nw"]["$scenario"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+                println("Feasibility check for day $day, hour $hour, scenario $scenario, index $index")
+                data_dict["$day"]["$hour"]["$scenario"] = feasibility_check
+                result_feasibility_checks["$day"]["$hour"]["$scenario"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
+                result_feasibility_checks["$day"]["$hour"]["$scenario"]["probability"] = grid["nw"]["$index"]["probability"]    
             end
-            if haskey(result_feasibility_checks_one_sw["$day"]["$hour"],"$scenario")
-                push!(obj_one_sw,result_feasibility_checks_one_sw["$day"]["$hour"]["$scenario"]["objective"])
-            end
-            if haskey(result_feasibility_checks_one_topology["$day"]["$hour"],"$scenario")
-                push!(obj_one_topology,result_feasibility_checks_one_topology["$day"]["$hour"]["$scenario"]["objective"])
-            end
-            if haskey(result_feasibility_checks_two_sw["$day"]["$hour"],"$scenario")
-                push!(obj_two_sw,result_feasibility_checks_two_sw["$day"]["$hour"]["$scenario"]["objective"])
-            end
+        elseif haskey(result_bs["$day"],"solution")
+            feasibility_check = deepcopy(grid["nw"]["$index"])
+            feasibility_check_input = deepcopy(grid["nw"]["$index"])
+            timestep = (hour - 1)*n_scenarios + scenario
+            _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["solution"]["nw"]["$timestep"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+            println("Feasibility check for day $day, hour $hour, scenario $scenario, index $index")
+            data_dict["$day"]["$hour"]["$scenario"] = feasibility_check
+            result_feasibility_checks["$day"]["$hour"]["$scenario"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
+            result_feasibility_checks["$day"]["$hour"]["$scenario"]["probability"] = grid["nw"]["$index"]["probability"]    
+        end
+    else
+        # fix this here, you do not get feasibility checks because of this
+        if haskey(result_bs["$day"],"$hour")
+            feasibility_check = deepcopy(grid["nw"]["$index"])
+            feasibility_check_input = deepcopy(grid["nw"]["$index"])
+            _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["$hour"]["solution"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+            println("Feasibility check for day $day, hour $hour, no scenario, index $index")
+            data_dict["$day"]["$hour"] = feasibility_check
+            result_feasibility_checks["$day"]["$hour"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
+            result_feasibility_checks["$day"]["$hour"]["probability"] = grid["nw"]["$index"]["probability"]    
+        elseif haskey(result_bs["$day"],"solution")
+            feasibility_check = deepcopy(grid["nw"]["$index"])
+            feasibility_check_input = deepcopy(grid["nw"]["$index"])
+            _SPMTA.prepare_AC_feasibility_check_stochastic(result_bs["$day"]["solution"]["nw"]["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+            println("Feasibility check for day $day, hour $hour, no scenarios, index $index")
+            data_dict["$day"]["$hour"] = feasibility_check
+            result_feasibility_checks["$day"]["$hour"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = settings)
+            result_feasibility_checks["$day"]["$hour"]["probability"] = grid["nw"]["$index"]["probability"]    
         end
     end
 end
 
-opf_total = sum(hourly_opf["$timestep"]["objective"]*scenario_wind["$timestep"]["probability"] for timestep in 1:(n_hours*n_scenarios))
-one_topology_total = sum(obj_one_topology[timestep]*scenario_wind["$timestep"]["probability"] for timestep in 1:(n_hours*n_scenarios))
-one_sw_total = sum(obj_one_sw[timestep]*scenario_wind["$timestep"]["probability"] for timestep in 1:(n_hours*n_scenarios))
-two_sw_total = sum(obj_two_sw[timestep]*scenario_wind["$timestep"]["probability"] for timestep in 1:(n_hours*n_scenarios))
-hourly_bs_total = sum(obj_hourly_bs[timestep]*scenario_wind["$timestep"]["probability"] for timestep in 1:(n_hours*n_scenarios))
-
-
-(opf_total - hourly_bs_total)/opf_total*100
-(opf_total - one_topology_total)/opf_total*100 
-(opf_total - one_sw_total)/opf_total*100
-(opf_total - two_sw_total)/opf_total*100
-
-##########################################################################################
-
-json_hourly_bs_n_scenarios = JSON.json(hourly_bs_days)
-json_feasibility_check_hourly_bs = JSON.json(result_feasibility_checks)
-json_data_check = JSON.json(data_check)
-
-open(joinpath(results_folder,case,"hourly_bs_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_hourly_bs_n_scenarios) 
-end 
-
-open(joinpath(results_folder,case,"fc_hourly_bs_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_feasibility_check_hourly_bs) 
-end 
-
-open(joinpath(results_folder,case,"fc_data_hourly_bs_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_data_check) 
-end 
 
 
 
-json_one_topology_n_scenarios = JSON.json(one_topology_bs_days)
-json_feasibility_check_one_topology = JSON.json(result_feasibility_checks_one_topology)
-json_data_check = JSON.json(data_check_one_topology)
+types = ["forecasted","average","measured"]
+for type in types
+    if type == "forecasted"
+        one_topology_all_days_forecasted = upload_results(n_days,results_folder,case,first_hour,last_hour,"one_topology_$(type)")    
+        fc_forecasted = feasibility_check_days(one_topology_all_days_forecasted,scenario_wind,forecasted_wind,one_scenario,"one_topology",type,first_hour,last_hour)
+    elseif type == "average"
+        one_topology_all_days_average = upload_results(n_days,results_folder,case,first_hour,last_hour,"one_topology_$(type)")    
+        fc_average = feasibility_check_days(one_topology_all_days_average,scenario_wind,average_wind,one_scenario,"one_topology",type,first_hour,last_hour)
+    elseif type == "measured"
+        one_topology_all_days_measured = upload_results(n_days,results_folder,case,first_hour,last_hour,"one_topology_$(type)")    
+        fc_measured = feasibility_check_days(one_topology_all_days_measured,scenario_wind,measured_wind,one_scenario,"one_topology",type,first_hour,last_hour)
+    end
+end
 
-open(joinpath(results_folder,case,"one_topology_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_one_topology_n_scenarios) 
-end 
+for type in types
+    if type == "forecasted"
+        one_sw_action_all_days_forecasted = upload_results(n_days,results_folder,case,first_hour,last_hour,"one_maximum_actions_$(type)")    
+        fc_forecasted = feasibility_check_days(one_sw_action_all_days_forecasted,scenario_wind,forecasted_wind,one_scenario,"one_maximum_actions",type,first_hour,last_hour)
+    elseif type == "average"
+        one_sw_action_all_days_average = upload_results(n_days,results_folder,case,first_hour,last_hour,"one_maximum_actions_$(type)")    
+        fc_average = feasibility_check_days(one_sw_action_all_days_average,scenario_wind,average_wind,one_scenario,"one_maximum_actions",type,first_hour,last_hour)
+    elseif type == "measured"
+        one_sw_action_all_days_measured = upload_results(n_days,results_folder,case,first_hour,last_hour,"one_maximum_actions_$(type)")    
+        fc_measured = feasibility_check_days(one_sw_measured,scenario_wind,measured_wind,one_scenario,"one_maximum_actions_",type,first_hour,last_hour)
+    end
+end
 
-open(joinpath(results_folder,case,"fc_one_topology_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_feasibility_check_one_topology) 
-end 
+for type in types
+    if type == "forecasted"
+    #    two_sw_action_all_days_forecasted = upload_results(n_days,results_folder,case,first_hour,last_hour,"two_maximum_actions_$(type)")    
+    #    fc_forecasted = feasibility_check_days(two_sw_action_all_days_forecasted,scenario_wind,forecasted_wind,one_scenario,"two_maximum_actions",type,first_hour,last_hour)
+    #elseif type == "average"
+    #    two_sw_action_all_days_average = upload_results(n_days,results_folder,case,first_hour,last_hour,"two_maximum_actions_$(type)")    
+    #    fc_average = feasibility_check_days(two_sw_action_all_days_average,scenario_wind,average_wind,two_scenario,"two_maximum_actions",type,first_hour,last_hour)
+    elseif type == "measured"
+        two_sw_action_all_days_measured = upload_results(n_days,results_folder,case,first_hour,last_hour,"two_maximum_actions_$(type)")    
+        fc_measured = feasibility_check_days(two_sw_action_all_days_measured,scenario_wind,measured_wind,one_scenario,"two_maximum_actions_",type,first_hour,last_hour)
+    end
+end
 
-open(joinpath(results_folder,case,"fc_data_one_topology_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_data_check) 
-end 
-
-
-json_one_sw_n_scenarios = JSON.json(one_sw_bs_days)
-json_feasibility_check_one_sw = JSON.json(result_feasibility_checks_one_sw)
-json_data_check = JSON.json(data_check_one_sw)
-
-open(joinpath(results_folder,case,"one_sw_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_one_sw_n_scenarios) 
-end 
-
-open(joinpath(results_folder,case,"fc_one_sw_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_feasibility_check_one_sw) 
-end 
-
-open(joinpath(results_folder,case,"fc_data_one_sw_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_data_check) 
-end 
-
-
-json_two_sw_n_scenarios = JSON.json(two_sw_bs_days)
-json_feasibility_check_two_sw = JSON.json(result_feasibility_checks_two_sw)
-json_data_check = JSON.json(data_check_two_sw)
-
-open(joinpath(results_folder,case,"two_sw_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_two_sw_n_scenarios) 
-end 
-
-open(joinpath(results_folder,case,"fc_two_sw_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_feasibility_check_two_sw) 
-end 
-
-open(joinpath(results_folder,case,"fc_data_two_sw_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour)_all_days.json"),"w") do f 
-    write(f, json_data_check) 
-end 
-
-
-
-
-
+for type in types
+    if type == "forecasted"
+        #hourly_bs_all_days_forecasted = upload_results_all_days(results_folder,case,first_hour,last_hour,"hourly_bs_$(type)")    
+        fc_forecasted = feasibility_check_days(hourly_bs_forecasted,scenario_wind,forecasted_wind,one_scenario,"hourly_bs",type,first_hour,last_hour)
+    elseif type == "average"
+        #hourly_bs_all_days_average = upload_results_all_days(results_folder,case,first_hour,last_hour,"hourly_bs_$(type)")    
+        fc_average = feasibility_check_days(hourly_bs_average,scenario_wind,average_wind,one_scenario,"hourly_bs",type,first_hour,last_hour)
+    elseif type == "measured"
+        #hourly_bs_all_days_measured = upload_results_all_days(results_folder,case,first_hour,last_hour,"hourly_bs_$(type)")    
+        fc_measured = feasibility_check_days(hourly_bs_measured,scenario_wind,measured_wind,one_scenario,"hourly_bs",type,first_hour,last_hour)
+    end
+end
 
 
+fc_forecasted = upload_results_all_days(results_folder,case,first_hour,last_hour,"fc_One_topology_forecasted")
+fc_average    = upload_results_all_days(results_folder,case,first_hour,last_hour,"fc_One_topology_average")
+fc_measured   = upload_results_all_days(results_folder,case,first_hour,last_hour,"fc_One_topology_measured")
+
+fc_hourly_forecasted = JSON.parsefile(joinpath(results_folder,case,"fc_hourly_bs_forecasted_$(first_hour)_$(last_hour)_all_days.json"))
+fc_hourly_average    = JSON.parsefile(joinpath(results_folder,case,"fc_hourly_bs_average_$(first_hour)_$(last_hour)_all_days.json"))
+fc_hourly_measured   = JSON.parsefile(joinpath(results_folder,case,"fc_hourly_bs_measured_$(first_hour)_$(last_hour)_all_days.json"))
 
 
+######################### Scenarios ############################
+type = "ciao"
 
+hourly_bs_scenarios_6 = upload_results_all_days(results_folder,case,first_hour,last_hour,"Hourly_bs_stochastic_Laplace_6_scenarios")
+hourly_bs_scenarios_8 = upload_results_all_days(results_folder,case,first_hour,last_hour,"Hourly_bs_stochastic_Laplace_8_scenarios")
+
+fc_hourly_bs_scenarios_6 = feasibility_check_days(hourly_bs_scenarios_6,scenario_wind_6,forecasted_wind,6,"Hourly_bs_stochastic_Laplace_6_scenarios",type,first_hour,last_hour)
+fc_hourly_bs_scenarios_8 = feasibility_check_days(hourly_bs_scenarios_8,scenario_wind_8,forecasted_wind,8,"Hourly_bs_stochastic_Laplace_8_scenarios",type,first_hour,last_hour)
+
+###############
+
+one_topology_scenarios_6 = upload_results_all_days(results_folder,case,first_hour,last_hour,"24_hours_BS_one_topology_stochastic_Laplace_6_scenarios")
+one_topology_scenarios_8 = upload_results_all_days(results_folder,case,first_hour,last_hour,"24_hours_BS_one_topology_stochastic_Laplace_8_scenarios")
+
+fc_one_topology_scenarios_6 = feasibility_check_days(one_topology_scenarios_6,scenario_wind_6,forecasted_wind,6,"24_hours_BS_one_topology_stochastic_Laplace_6_scenarios",type,first_hour,last_hour)
+fc_one_topology_scenarios_8 = feasibility_check_days(one_topology_scenarios_8,scenario_wind_8,forecasted_wind,8,"24_hours_BS_one_topology_stochastic_Laplace_8_scenarios",type,first_hour,last_hour)
+
+###############
+
+one_sw_scenarios_6 = upload_results_all_days(results_folder,case,first_hour,last_hour,"24_hours_BS_one_sw_stochastic_Laplace_6_scenarios")
+one_sw_scenarios_8 = upload_results_all_days(results_folder,case,first_hour,last_hour,"24_hours_BS_one_sw_stochastic_Laplace_8_scenarios")
+
+fc_one_sw_scenarios_6 = feasibility_check_days(one_sw_scenarios_6,scenario_wind_6,forecasted_wind,6,"24_hours_BS_one_sw_stochastic_Laplace_6_scenarios",type,first_hour,last_hour)
+fc_one_sw_scenarios_8 = feasibility_check_days(one_sw_scenarios_8,scenario_wind_8,forecasted_wind,8,"24_hours_BS_one_sw_stochastic_Laplace_8_scenarios",type,first_hour,last_hour)
+
+###############
+
+two_sw_scenarios_6 = upload_results_all_days(results_folder,case,first_hour,last_hour,"24_hours_BS_two_sw_stochastic_Laplace_6_scenarios")
+two_sw_scenarios_8 = upload_results_all_days(results_folder,case,first_hour,last_hour,"24_hours_BS_two_sw_stochastic_Laplace_8_scenarios")
+
+fc_two_sw_scenarios_6 = feasibility_check_days(two_sw_scenarios_6,scenario_wind_6,forecasted_wind,6,"24_hours_BS_two_sw_stochastic_Laplace_6_scenarios",type,first_hour,last_hour)
+fc_two_sw_scenarios_8 = feasibility_check_days(two_sw_scenarios_8,scenario_wind_8,forecasted_wind,8,"24_hours_BS_two_sw_stochastic_Laplace_8_scenarios",type,first_hour,last_hour)

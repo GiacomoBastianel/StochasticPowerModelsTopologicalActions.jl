@@ -146,10 +146,14 @@ open(joinpath(@__DIR__,"case30","forecasted_two_weeks_8153_8488.json"),"w") do f
 end 
 
 
-plot(measured_two_weeks,xticks = 0:24:336, xlabel = "Hour", ylabel = "Capacity factor [-]", xlims = (1, 336), ylims = (0.0, 1.0), yticks = 0.0:0.2:1.0, label = "Measured wind")
+plot(measured_two_weeks,xticks = 0:24:336, xlabel = "Hour", ylabel = "Capacity factor [-]", xlims = (1, 336), ylims = (0.0, 1.0), yticks = 0.0:0.2:1.0, label = "Measured wind", ticksfontsize = 8, ylabelfontsize = 9, xlabelfontsize = 9, legend = :bottomleft)
 plot!(forecasted_two_weeks, label = "Forecasted wind")
+first_hour = 8153
+last_hour  = 8488
+
 figures_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Figures/RES_uncertainty"
-savefig(joinpath(figures_folder, "Measured_vs_forecasted_two_weeks.svg"))
+savefig(joinpath(figures_folder, "Measured_vs_forecasted_$(first_hour)_$(last_hour).svg"))
+savefig(joinpath(figures_folder, "Measured_vs_forecasted_$(first_hour)_$(last_hour).pdf"))
 
 
 diff_P50_P10 = P50_11h .- P10_11h

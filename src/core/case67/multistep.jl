@@ -6,10 +6,12 @@ using Gurobi, Ipopt, JSON, Plots
 import StochasticPowerModelsTopologicalActions; const _SPMTA = StochasticPowerModelsTopologicalActions
 using JuMP, Juniper, HSL_jll, MathOptInterface, HiGHS
 
-mip_gap = 1e-4
-gurobi_bs = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 5400,"MIPGap" => mip_gap,"BarHomogeneous" => 1, "NumericFocus"=>2) 
+mip_gap = 1e-3
+gurobi = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 900,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
+gurobi_opf = JuMP.optimizer_with_attributes(Gurobi.Optimizer,"time_limit" => 1200,"MIPGap" => mip_gap)#,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2) 
+gurobi_lpac = JuMP.optimizer_with_attributes(Gurobi.Optimizer)#,"time_limit" => 1200,"MIPGap" => mip_gap,"BarHomogeneous" => 1,"BarQCPConvTol"=>1e-4,"QCPDual" => 1, "ScaleFlag"=>2, "NumericFocus"=>2)
 ipopt = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "tol" => 1e-6, "print_level" => 0,"linear_solver" => "ma97")
-juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi_bs, "time_limit" => 36000)
+juniper = JuMP.optimizer_with_attributes(Juniper.Optimizer, "nl_solver" => ipopt, "mip_solver" => gurobi, "time_limit" => 36000)
 
 #########################################################################################
 ## Processing input data
@@ -18,163 +20,38 @@ s_dual = Dict("output" => Dict("branch_flows" => true,"duals" => true), "conv_lo
 
 #########################################################################################
 ## Processing input data
-#=
 input_folder = dirname(dirname(dirname(@__DIR__)))
-test_case_file = joinpath(input_folder,"data_sources/case67.m")
+test_case_file = joinpath(input_folder,"data_sources/pglib_opf_case30_ieee.m")
 original_grid = _PM.parse_file(test_case_file)
+
+results_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/Deliverable_1_2_DIRECTIONS/Results"
+case = "case_30"
+
 test_case = _PM.parse_file(test_case_file)
-_PMACDC.process_additional_data!(test_case)
 
-opf_67 = _PMACDC.run_acdcopf(test_case_json, LPACCPowerModel, gurobi; setting = s)
-opf_67_ac = _PMACDC.run_acdcopf(test_case_json, ACPPowerModel, ipopt; setting = s_dual)
-
-test_case["gen"]["2"]["cost"][1] = 59.0
-test_case["gen"]["4"]["cost"][1] = 59.0
-test_case["gen"]["20"]["cost"][1] = 59.0
-test_case["gen"]["1"]["cost"][1]  = 120.0
-test_case["gen"]["3"]["cost"][1]  = 120.0
-test_case["gen"]["10"]["cost"][1] = 120.0
-test_case["gen"]["16"]["cost"][1] = 120.0
-test_case["gen"]["18"]["cost"][1] = 120.0
-test_case["gen"]["7"]["cost"][1] = 120.0
-test_case["gen"]["15"]["cost"][1]  = 89.0
-test_case["gen"]["5"]["cost"][1]  = 89.0
-test_case["gen"]["17"]["cost"][1] = 89.0
-test_case["gen"]["9"]["cost"][1]  = 89.0
-test_case["gen"]["8"]["cost"][1]  = 89.0
-test_case["gen"]["12"]["cost"][1] = 89.0
-test_case["gen"]["6"]["cost"][1]  = 110.0
-test_case["gen"]["14"]["cost"][1] = 110.0
-test_case["gen"]["11"]["cost"][1] = 110.0
-test_case["gen"]["13"]["cost"][1] = 110.0
-test_case["gen"]["19"]["cost"][1]  = 110.0
-
-function add_VOLL_generators(data)
-    first_l = maximum(parse.(Int, keys(data["gen"])))
-    count = 0
-    for (b_id,b) in data["bus"]
-        count += 1
-        l = first_l + count
-        data["gen"]["$l"] = deepcopy(data["gen"]["1"])
-        #data["gen"]["$l"]["installed_capacity"] = 99.99
-        data["gen"]["$l"]["gen_bus"] = parse(Int64,b_id) 
-        data["gen"]["$l"]["pmax"] = 99.99
-        #data["gen"]["$l"]["mbase"] = 9999
-        data["gen"]["$l"]["source_id"][2] = deepcopy(l)
-        #data["gen"]["$l"]["gen_type"] = "VOLL"
-        data["gen"]["$l"]["index"] = l 
-        #data["gen"]["$l"]["type"] = "VOLL"
-        data["gen"]["$l"]["cost"][1] = 10000
-    end
-end
-add_VOLL_generators(test_case)
-=#
-
-
-input_folder = dirname(dirname(dirname(@__DIR__)))
-test_case_file = joinpath(input_folder,"data_sources/case67_modified.json")
-original_grid = _PM.parse_file(test_case_file)
-test_case = _PM.parse_file(test_case_file)
-#_PMACDC.process_additional_data!(test_case)
-for (l_id,l) in test_case["load"]
-    l["pd"] = l["pd"]*2.0
-end
-
-opf_67 = _PMACDC.run_acdcopf(test_case, LPACCPowerModel, ipopt; setting = s)
-opf_67_ac = _PMACDC.run_acdcopf(test_case, ACPPowerModel, ipopt; setting = s_dual)
-
-for (g_id,g) in test_case["gen"]
-    if opf_67_ac["solution"]["gen"][g_id]["pg"] > 0.001
-        println("Gen $g_id, using $(opf_67_ac["solution"]["gen"][g_id]["pg"]/g["pmax"])  gen bus $(g["gen_bus"]), dual $(opf_67_ac["solution"]["bus"]["$(g["gen_bus"])"]["lam_kcl_r"]), generating $(opf_67_ac["solution"]["gen"][g_id]["pg"]), cost $(g["cost"][1])")
-    end
-end
-
-
-for (g_id,g) in test_case["gen"]
-    println("Gen $g_id, gen bus $(g["gen_bus"]), $(g["cost"])")
-end
-
-
-###################################
-function split_one_bus_per_time(test_case,results_dict,results_dict_ac_check,results_dict_lpac_check)
-    for (b_id,b) in test_case["bus"]
-        results_dict["$b_id"] = Dict{String,Any}()
-        results_dict_ac_check["$b_id"] = Dict{String,Any}()
-        test_case_bs = deepcopy(test_case)
-        splitted_bus_ac = parse(Int64,b_id)
-        test_case_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_more_buses(test_case_bs,splitted_bus_ac)
-        test_case_bs["switch"]["1"]["cost"] = 1.0
-        results_dict["$b_id"] = _PMTP.run_acdcsw_AC_big_M(test_case_bs,LPACCPowerModel,gurobi_bs)
-        test_case_bs_check = deepcopy(test_case_bs)
-        test_case_bs_check_auxiliary = deepcopy(test_case_bs)
-        if results_dict["$b_id"]["termination_status"] == JuMP.OPTIMAL
-            _PMTP.prepare_AC_feasibility_check(results_dict["$b_id"],test_case_bs_check_auxiliary,test_case_bs_check,switches_couples_ac,extremes_ZILs_ac,test_case)
-            results_dict_ac_check["$b_id"] = _PMACDC.run_acdcopf(test_case_bs_check,ACPPowerModel,ipopt; setting = s)
-            results_dict_lpac_check["$b_id"] = _PMACDC.run_acdcopf(test_case_bs_check,LPACCPowerModel,gurobi_bs; setting = s)
-        end
-    end
-end
-
-
-result_bs = Dict{String,Any}()
-results_ac_check = Dict{String,Any}()
-results_lpac_check = Dict{String,Any}()
-split_one_bus_per_time(test_case,result_bs,results_ac_check,results_lpac_check)
-
-ranking_bs = []
-for b_id in eachindex(results_ac_check)
-    if length(results_ac_check["$b_id"]) > 2
-        push!(ranking_bs, (b_id, results_ac_check["$b_id"]["objective"]))
-    end
-end
-ranking_bs = sort(ranking_bs, by = x -> x[2], rev = false)
-
-
-
-ranking_bs_lpac = []
-for b_id in eachindex(results_lpac_check)
-    if length(results_ac_check["$b_id"]) > 2
-        push!(ranking_bs_lpac, (b_id, results_lpac_check["$b_id"]["objective"]))
-    end
-end
-ranking_bs_lpac = sort(ranking_bs_lpac, by = x -> x[2], rev = false)
-
-
-results_lpac_check["25"]
-results_ac_check["25"]
+test_case_opf = deepcopy(test_case)
+opf_30 = _PM.solve_opf(test_case_opf, LPACCPowerModel, ipopt)
 
 #########################################################################################
 # Busbar splitting
-test_case_bs = deepcopy(test_case)
-splitted_bus_ac = 25
-test_case_bs_try,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_more_buses(test_case_bs,splitted_bus_ac)
+test_case_bs = deepcopy(test_case_opf)
+splitted_bus_ac = 6
+test_case_bs,  switches_couples_ac,  extremes_ZILs_ac  = _PMTP.AC_busbar_split_AC_grid(test_case,splitted_bus_ac)
 
 # Adding costs to the busbar couplers
 for sw_id in 1:length(extremes_ZILs_ac)
     test_case_bs["switch"]["$sw_id"]["cost"] = 10.0
 end
 
-#result_bs = _PMTP.run_acdcsw_AC_big_M_hour(test_case_bs_40, LPACCPowerModel, gurobi)
-result_bs = _PMTP.run_acdcsw_AC_big_M(test_case_bs_try, LPACCPowerModel, gurobi_bs)
+result_bs_6 = _PMTP.run_acdcsw_AC_big_M_hour(test_case_bs, LPACCPowerModel, gurobi)
+result_bs_6_no_cost = _PMTP.run_acdcsw_AC_big_M(test_case_bs, LPACCPowerModel, gurobi)
 
-function print_switch_results(test_case,original_test_case,results)
-    for sw_id in 1:length(test_case["switch"])
-        if haskey(test_case["switch"]["$(sw_id)"],"auxiliary")
-            println("Switch $sw_id, aux is $(test_case["switch"]["$(sw_id)"]["auxiliary"]), orig is $(test_case["switch"]["$(sw_id)"]["original"]), t_bus is $(test_case["switch"]["$(sw_id)"]["t_bus"]), $(results["solution"]["switch"]["$sw_id"]["status"]), bus_split is $(test_case["switch"]["$(sw_id)"]["bus_split"])")    
-            if test_case["switch"]["$(sw_id)"]["auxiliary"] == "branch"
-                println("      Branch $(test_case["switch"]["$(sw_id)"]["original"]), f_bus $(original_test_case["branch"]["$(test_case["switch"]["$(sw_id)"]["original"])"]["f_bus"]), t_bus $(original_test_case["branch"]["$(test_case["switch"]["$(sw_id)"]["original"])"]["t_bus"])")
-            end
-        else
-            println("Switch $sw_id,  is $(results["solution"]["switch"]["$sw_id"]["status"]), bus_split is $(test_case["switch"]["$(sw_id)"]["bus_split"])")
-        end
-    end
-end
-print_switch_results(test_case_bs,test_case_bs_try,result_bs)
 
 feasibility_check = deepcopy(test_case_bs)
 feasibility_check_input = deepcopy(test_case_bs)
-_PMTP.prepare_AC_feasibility_check(result_bs,feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case)
-result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,ACPPowerModel,ipopt; setting = s)
+_PMTP.prepare_AC_feasibility_check(result_bs_6,feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_feasibility_check = _PMACDC.run_acdcopf(feasibility_check,LPACCPowerModel,gurobi_opf; setting = s)
+
 
 #########################################################################################
 # Hours
@@ -210,7 +87,7 @@ max_load = maximum(total_loads)
 
 # Time series
 Wind_data = Dict{String,Any}()
-for i in 1:length(hours)
+for i in hours
     h = start_hour_simulation + i - 1
     hw = is[i]   
     Wind_data["$h"] = Dict{String,Any}()
@@ -223,7 +100,7 @@ for i in 1:length(hours)
 end
 
 Load_data = Dict{String,Any}()
-for i in 1:length(hours)
+for i in hours
     h = start_hour_simulation + i - 1
     hw = is[i]   
     Load_data["$h"] = Dict{String,Any}()
@@ -232,10 +109,10 @@ for i in 1:length(hours)
     Load_data["$h"]["Elia_timestep"] = is[i]
 end
 
+
 measured_wind   = [Wind_data["$i"]["measured_pu"]   for i in 1:length(hours)]
 forecasted_wind = [Wind_data["$i"]["P50_11hforecast_pu"] for i in 1:length(hours)]
 load_pu = [Load_data["$i"]["total_load_pu"] for i in 1:length(hours)]
-
 
 P50_11h = []
 for i in 1:length(Elia_OFW)
@@ -244,40 +121,57 @@ for i in 1:length(Elia_OFW)
     end
 end
 
-plot(P50_11h[355:366])
+measured_11h = []
+for i in 1:length(Elia_OFW)
+    if Elia_OFW[i]["minute"] == "00"
+        push!(measured_11h,Elia_OFW[i]["measured"]/Elia_OFW[i]["monitoredcapacity"])
+    end
+end
 
 forecasted_wind = P50_11h[355:378]
+measured_wind = measured_11h[355:378]
 
-plot(measured_wind,grid = :none,label = :none)
-plot!(forecasted_wind,label = :none)
+forecasted_wind[20] = forecasted_wind[1]
+forecasted_wind[21] = forecasted_wind[2]
+forecasted_wind[22] = forecasted_wind[3]
+forecasted_wind[23] = forecasted_wind[4]
+forecasted_wind[24] = forecasted_wind[5]
+
+measured_wind[20] = measured_wind[1]
+measured_wind[21] = measured_wind[2]
+measured_wind[22] = measured_wind[3]
+measured_wind[23] = measured_wind[4]
+measured_wind[24] = measured_wind[5]
 
 
-# PUTTING EVERYTHING AT ONE
-measured_wind   = [1.0 for i in 1:length(hours)]
-forecasted_wind = [1.0 for i in 1:length(hours)]
-load_pu         = [1.0 for i in 1:length(hours)]
+plot(forecasted_wind)
+plot!(measured_wind)
 
 
 #########################################################################################
 ## Running simulations
 # Busbar splitting
-test_case_opf_replicate = _PM.replicate(test_case_json, n_hours)
+test_case_opf_replicate = _PM.replicate(test_case_opf, n_hours)
 for (nw_id,nw) in test_case_opf_replicate["nw"]
     nw["probability"] = 1.0
     nw["per_unit"] = true
 end
-
 test_case_opf_mn_measured = deepcopy(test_case_opf_replicate)
 test_case_opf_mn_forecasted = deepcopy(test_case_opf_replicate)
 for i in 1:(n_hours*one_scenario)
-    test_case_opf_mn_measured["nw"]["$i"]["gen"]["2"]["pmax"]   = deepcopy(test_case_opf_mn_measured["nw"]["$i"]["gen"]["2"]["pmax"]*measured_wind[i])
-    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["2"]["pmax"] = deepcopy(test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["2"]["pmax"]*forecasted_wind[i])
-
-    test_case_opf_mn_measured["nw"]["$i"]["gen"]["4"]["pmax"]   = deepcopy(test_case_opf_mn_measured["nw"]["$i"]["gen"]["4"]["pmax"]*measured_wind[i])
-    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["4"]["pmax"] = deepcopy(test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["4"]["pmax"]*forecasted_wind[i])
-
-    test_case_opf_mn_measured["nw"]["$i"]["gen"]["20"]["pmax"]   = deepcopy(test_case_opf_mn_measured["nw"]["$i"]["gen"]["20"]["pmax"]*measured_wind[i])
-    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["20"]["pmax"] = deepcopy(test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["20"]["pmax"]*forecasted_wind[i])
+    test_case_opf_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
+    test_case_opf_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_opf_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
+end
+test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours)
+for (nw_id,nw) in test_case_bs_replicate["nw"]
+    nw["probability"] = 1.0
+    nw["per_unit"] = true
+end
+test_case_bs_replicate_mn_measured = deepcopy(test_case_bs_replicate)
+test_case_bs_replicate_mn_forecasted = deepcopy(test_case_bs_replicate)
+for i in 1:(n_hours*one_scenario)
+    test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["1"]["pmax"]   = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*measured_wind[i])
+    test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["1"]["pmax"] = deepcopy(test_case_bs_replicate["nw"]["$i"]["gen"]["1"]["pmax"]*forecasted_wind[i])
 end
 
 
@@ -300,26 +194,7 @@ function add_hour_scenario_probability(data,hour,scenario,index)
     #data["nw"]["$index"]["probability"] = time_series["scenario_probability"]["$index"]
 end
 
-test_case_bs_replicate = _PM.replicate(test_case_bs, n_hours)
-for (nw_id,nw) in test_case_bs_replicate["nw"]
-    nw["probability"] = 1.0
-    nw["per_unit"] = true
-end
-
-test_case_bs_replicate_mn_measured = deepcopy(test_case_bs_replicate)
-test_case_bs_replicate_mn_forecasted = deepcopy(test_case_bs_replicate)
 adding_multinetwork_scenarios(test_case_bs_replicate,n_hours,one_scenario)
-for i in 1:(n_hours*one_scenario)
-    test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["2"]["pmax"]   = deepcopy(test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["2"]["pmax"]*measured_wind[i])
-    test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["2"]["pmax"] = deepcopy(test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["2"]["pmax"]*forecasted_wind[i])
-
-    test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["4"]["pmax"]   = deepcopy(test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["4"]["pmax"]*measured_wind[i])
-    test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["4"]["pmax"] = deepcopy(test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["4"]["pmax"]*forecasted_wind[i])
-
-    test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["20"]["pmax"]   = deepcopy(test_case_bs_replicate_mn_measured["nw"]["$i"]["gen"]["20"]["pmax"]*measured_wind[i])
-    test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["20"]["pmax"] = deepcopy(test_case_bs_replicate_mn_forecasted["nw"]["$i"]["gen"]["20"]["pmax"]*forecasted_wind[i])
-end
-
 adding_multinetwork_scenarios(test_case_bs_replicate_mn_measured,n_hours,one_scenario)
 adding_multinetwork_scenarios(test_case_bs_replicate_mn_forecasted,n_hours,one_scenario)
 
@@ -328,19 +203,19 @@ adding_multinetwork_scenarios(test_case_bs_replicate_mn_forecasted,n_hours,one_s
 # Hourly busbar splitting 
 function run_stochastic_acdcsw_AC_ZIL_per_hour(grid, model, optimizer, n_hours, n_scenarios; setting = s)
     result = Dict{String,Any}()
-    
-    #for hour in 1:n_hours
-    #    result["$hour"] = Dict{String,Any}()
-    #    scenarios_hour = collect(((hour-1)*n_scenarios + 1):(hour*n_scenarios))
-    #    grid_hour = deepcopy(grid)
-    #    grid_hour["hours"] = 1
-    #    grid_hour["nw"]= Dict{String,Any}()
-    #    for i in scenarios_hour
-    #        grid_hour["nw"]["$i"] = deepcopy(grid["nw"]["$i"])
-    #    end    
-    #    result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly(grid_hour,model,optimizer; setting = setting)
-    #end
-    
+    #=
+    for hour in 1:n_hours
+        result["$hour"] = Dict{String,Any}()
+        scenarios_hour = collect(((hour-1)*n_scenarios + 1):(hour*n_scenarios))
+        grid_hour = deepcopy(grid)
+        grid_hour["hours"] = 1
+        grid_hour["nw"]= Dict{String,Any}()
+        for i in scenarios_hour
+            grid_hour["nw"]["$i"] = deepcopy(grid["nw"]["$i"])
+        end    
+        result["$hour"] = _SPMTA.run_stochastic_acdcsw_AC_ZIL_hourly(grid_hour,model,optimizer; setting = setting)
+    end
+    =#
     for hour in 1:n_hours*n_scenarios
         result["$hour"] = Dict{String,Any}()
         result["$hour"] = _PMTP.run_acdcsw_AC_big_M_hour(grid["nw"]["$hour"],model,optimizer; setting = setting) 
@@ -354,8 +229,8 @@ function run_feasibility_checks_per_hour(grid, result_bs, model, optimizer,switc
         result_feasibility_checks["$hour"] = Dict{String,Any}()
         feasibility_check = deepcopy(grid["nw"]["$hour"])
         feasibility_check_input = deepcopy(grid["nw"]["$hour"])
-        _PMTP.prepare_AC_feasibility_check(result_bs["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
-        result_feasibility_checks["$hour"] = _PMACDC.run_acdcopf(feasibility_check,model,optimizer; setting = s)
+        prepare_AC_feasibility_check(result_bs["$hour"],feasibility_check_input,feasibility_check,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+        result_feasibility_checks["$hour"] = _PM.solve_opf(feasibility_check,model,optimizer; setting = s)
         #if isnan(result_feasibility_checks["$hour"]["objective"])
         #    result_feasibility_checks["$hour"] = deepcopy(result_opf["$hour"])
         #end
@@ -364,24 +239,31 @@ function run_feasibility_checks_per_hour(grid, result_bs, model, optimizer,switc
 end
 
 
-result_forecasted_24_ac = Dict{String,Any}()
-for hour in 1:(n_hours*one_scenario)
-    result_forecasted_24_ac["$hour"] = _PMACDC.run_acdcopf(test_case_opf_mn_forecasted["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
-end
-
+result_forecasted_24 = Dict{String,Any}()
 result_forecasted_24_lpac = Dict{String,Any}()
 for hour in 1:(n_hours*one_scenario)
-    result_forecasted_24_lpac["$hour"] = _PMACDC.run_acdcopf(test_case_opf_mn_forecasted["nw"]["$hour"],LPACCPowerModel,gurobi; setting = s)
+    result_forecasted_24["$hour"] = _PM.solve_opf(test_case_opf_mn_forecasted["nw"]["$hour"],ACPPowerModel,ipopt; setting = s)
+    result_forecasted_24_lpac["$hour"] = _PM.solve_opf(test_case_opf_mn_forecasted["nw"]["$hour"],LPACCPowerModel,ipopt; setting = s)
 end
+obj_forecasted_24 = [result_forecasted_24["$i"]["objective"] for i in 1:n_hours]
+obj_forecasted_24_lpac = [result_forecasted_24_lpac["$i"]["objective"] for i in 1:n_hours]
 
-obj_opf_forecasted_24_ac = [result_forecasted_24_ac["$i"]["objective"] for i in 1:n_hours]
-obj_opf_forecasted_24_lpac = [result_forecasted_24_lpac["$i"]["objective"] for i in 1:n_hours]
+json_opf_results_opf_forecasted_ac = JSON.json(result_forecasted_24)
+open(joinpath(results_folder,case,"24_hours_OPF_ac.json"),"w") do f 
+    write(f, json_opf_results_opf_forecasted_ac) 
+end 
+
+json_opf_results_opf_forecasted_lpac = JSON.json(result_forecasted_24_lpac)
+open(joinpath(results_folder,case,"24_hours_OPF_lpac.json"),"w") do f 
+    write(f, json_opf_results_opf_forecasted_lpac) 
+end 
 
 
-sum(obj_opf_forecasted_24)
+sum(obj_forecasted_24)
+sum(obj_forecasted_24_lpac)
 sum(result_forecasted_24["$i"]["solve_time"] for i in 1:n_hours)
 
-plot(obj_forecasted_24,label="Forecasted",grid = :none)
+plot(obj_forecasted_24,ylims = (0,2.0e4),label="Forecasted",grid = :none)
 ##############################################################
 #=
 result_bs_hourly_24 = run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_replicate,LPACCPowerModel,gurobi,n_hours,one_scenario)
@@ -409,29 +291,19 @@ sum(obj_fc_measured)
 ##############################################################
 
 result_bs_hourly_forecasted_24 = run_stochastic_acdcsw_AC_ZIL_per_hour(test_case_bs_replicate_mn_forecasted,LPACCPowerModel,gurobi,n_hours,one_scenario)
-result_forecasted_feasibility_checks_24_ac = run_feasibility_checks_per_hour(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_json)
-result_forecasted_feasibility_checks_24_lpac = run_feasibility_checks_per_hour(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_json)
+result_forecasted_feasibility_checks_24_ac = run_feasibility_checks_per_hour(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_forecasted_feasibility_checks_24_lpac = run_feasibility_checks_per_hour(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
 
-obj_opf_forecasted_24
+obj_bs_forecasted_ac = [result_forecasted_feasibility_checks_24_ac["$i"]["objective"] for i in 1:n_hours]
+sum(obj_bs_forecasted_ac)
 
-obj_bs_forecasted = [result_bs_hourly_forecasted_24["$i"]["objective"] for i in 1:n_hours]
-sum(obj_bs_forecasted)
+obj_bs_forecasted_lpac = [result_forecasted_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
+sum(obj_bs_forecasted_lpac)
 
-
-obj_fc_forecasted_ac = [result_forecasted_feasibility_checks_24_ac["$i"]["objective"] for i in 1:n_hours]
-obj_fc_forecasted_lpac = [result_forecasted_feasibility_checks_24_lpac["$i"]["objective"] for i in 1:n_hours]
-
-sum(obj_forecasted_24) - sum(obj_fc_forecasted)
-(obj_forecasted_24 .- obj_fc_forecasted)./sum(obj_forecasted_24)*100
-
-
-
-for (g_id,g) in test_case["gen"]
-    if result_bs_hourly_forecasted_24["1"]["solution"]["gen"]["$g_id"]["pg"] > 0.001
-        println("Gen $g_id, bus $(g["gen_bus"]), cost $(g["cost"][1]), pmax $(g["pmax"]), pg is $(opf_67["solution"]["gen"]["$g_id"]["pg"])")
-    end
-end
-
+json_opf_results_forecasted = JSON.json(result_bs_hourly_forecasted_24)
+open(joinpath(results_folder,case,"24_hours_forecasted_bs.json"),"w") do f 
+    write(f, json_opf_results_forecasted) 
+end 
 
 ##############################################################
 function prepare_starting_value_dict_lpac_nw_sp(grid,start_hour_simulation,end_hour_simulation,n_scenarios)
@@ -507,8 +379,14 @@ end
 test_case_bs_replicate_mn_forecasted_sp_24 = deepcopy(test_case_bs_replicate_mn_forecasted)
 prepare_starting_value_dict_lpac_nw_sp(test_case_bs_replicate_mn_forecasted_sp_24,start_hour_simulation,end_hour_simulation,one_scenario)
 
-result_bs_hourly_forecasted_one_topology_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_replicate_mn_forecasted_sp_24,LPACCPowerModel,gurobi; setting = s)
+#result_bs_hourly_forecasted_one_topology_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_replicate_mn_forecasted_sp_24,LPACCPowerModel,gurobi; setting = s)
 result_bs_hourly_forecasted_one_topology_24_no_sp = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology(test_case_bs_replicate_mn_forecasted_sp_24,LPACCPowerModel,gurobi; setting = s)
+result_bs_hourly_forecasted_one_topology_24_sp = _SPMTA.run_stochastic_acdcsw_AC_ZIL_one_topology_sp(test_case_bs_replicate_mn_forecasted_sp_24,LPACCPowerModel,gurobi; setting = s)
+
+json_opf_results_one_topology = JSON.json(result_bs_hourly_forecasted_one_topology_24_no_sp)
+open(joinpath(results_folder,case,"24_hours_one_topology.json"),"w") do f 
+    write(f, json_opf_results_one_topology) 
+end 
 
 [result_bs_hourly_forecasted_one_topology_24["solution"]["nw"]["1"]["switch"]["$sw_id"]["status"] for (sw_id,sw) in test_case_bs["switch"]]
 
@@ -694,25 +572,74 @@ function print_switch_results_one_topology(test_case,original_test_case,results,
     end
 end
 
-result_fc_hourly_forecasted_one_topology_24 = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_one_topology_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
-[result_fc_hourly_forecasted_one_topology_24["$i"]["objective"] for i in 1:n_hours]
+result_fc_hourly_forecasted_one_topology_24 = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_one_topology_24_no_sp,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
 sum(result_fc_hourly_forecasted_one_topology_24["$i"]["objective"] for i in 1:n_hours)
+
+result_fc_hourly_forecasted_one_topology_24_lpac = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted,result_bs_hourly_forecasted_one_topology_24_no_sp,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+sum(result_fc_hourly_forecasted_one_topology_24_lpac["$i"]["objective"] for i in 1:n_hours)
 
 ##############################################################
 
 test_case_bs_1_24 = deepcopy(test_case_bs_replicate_mn_forecasted_sp_24)
 test_case_bs_1_24["total_switching_actions"] = 2
-test_case_bs_1_result_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp(test_case_bs_1_24,LPACCPowerModel,gurobi)
-result_fc_1_sw_lpac = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted_sp_24,test_case_bs_1_result_24,DCPPowerModel,gurobi,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+for (sw_id,sw) in test_case_bs_1_24["nw"]["1"]["switch"]
+    sw["maximum_actions"] = 2
+end
+test_case_bs_1_result_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_1_24,LPACCPowerModel,gurobi)
+result_fc_1_sw_lpac = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted_sp_24,test_case_bs_1_result_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
 result_fc_1_sw = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted_sp_24,test_case_bs_1_result_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
 sum(result_fc_1_sw["$i"]["objective"] for i in 1:n_hours)
+sum(result_fc_1_sw_lpac["$i"]["objective"] for i in 1:n_hours)
 
-[result_fc_1_sw_lpac["$i"]["objective"] for i in 1:n_hours]
 
-sum(obj_forecasted_24) - sum(result_fc_1_sw["$i"]["objective"] for i in 1:n_hours)
-(sum(obj_forecasted_24) - sum(result_fc_1_sw["$i"]["objective"] for i in 1:n_hours))/sum(obj_forecasted_24)*100
+sum(obj_forecasted_24) - sum(result_fc_1_sw_lpac["$i"]["objective"] for i in 1:n_hours)
+(sum(obj_forecasted_24) - sum(result_fc_1_sw_lpac["$i"]["objective"] for i in 1:n_hours))/sum(obj_forecasted_24)*100
 
 sw_1_one_sw_actions = [test_case_bs_1_result_24["solution"]["nw"]["$i"]["switch"]["1"]["status"] for i in 1:n_hours]
+sw_1_one_sw_actions = [test_case_bs_1_result_24["solution"]["nw"]["$i"]["switch"]["2"]["status"] for i in 1:n_hours]
+sw_1_one_sw_actions = [test_case_bs_1_result_24["solution"]["nw"]["$i"]["switch"]["3"]["status"] for i in 1:n_hours]
+
+
+json_opf_results_max_actions_2 = JSON.json(test_case_bs_1_result_24)
+open(joinpath(results_folder,case,"24_hours_max_two_splits_forecasted.json"),"w") do f 
+    write(f, json_opf_results_max_actions_2) 
+end 
+
+###############################################################
+
+test_case_bs_1_1_24 = deepcopy(test_case_bs_replicate_mn_forecasted_sp_24)
+test_case_bs_1_1_24["total_switching_actions"] = 1
+for (sw_id,sw) in test_case_bs_1_1_24["nw"]["1"]["switch"]
+    sw["maximum_actions"] = 1
+end
+test_case_bs_1_1_result_24 = _SPMTA.run_stochastic_acdcsw_AC_ZIL_limit_switching_actions_sp_all_switches(test_case_bs_1_1_24,LPACCPowerModel,gurobi)
+result_fc_1_1_sw_lpac = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted_sp_24,test_case_bs_1_1_result_24,LPACCPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+result_fc_1_1_sw = run_feasibility_checks_hourly(test_case_bs_replicate_mn_forecasted_sp_24,test_case_bs_1_1_result_24,ACPPowerModel,ipopt,switches_couples_ac,extremes_ZILs_ac,test_case_opf)
+sum(result_fc_1_1_sw["$i"]["objective"] for i in 1:n_hours)
+sum(result_fc_1_1_sw_lpac["$i"]["objective"] for i in 1:n_hours)
+
+json_opf_results_max_actions_1 = JSON.json(test_case_bs_1_1_result_24)
+open(joinpath(results_folder,case,"24_hours_max_one_split_forecasted.json"),"w") do f 
+    write(f, json_opf_results_max_actions_1) 
+end 
+
+
+sum(obj_forecasted_24) - sum(result_fc_1_1_sw_lpac["$i"]["objective"] for i in 1:n_hours)
+(sum(obj_forecasted_24) - sum(result_fc_1_1_sw_lpac["$i"]["objective"] for i in 1:n_hours))/sum(obj_forecasted_24)*100
+
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["1"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["2"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["3"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["4"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["5"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["6"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["7"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["8"]["status"] for i in 1:n_hours]
+sw_1_1_one_sw_actions = [test_case_bs_1_1_result_24["solution"]["nw"]["$i"]["switch"]["9"]["status"] for i in 1:n_hours]
+
+###
+
+
 
 
 ##############################################################
