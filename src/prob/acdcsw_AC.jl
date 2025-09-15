@@ -1571,7 +1571,6 @@ function build_stochastic_acdcsw_AC_ZIL_one_topology(pm::_PM.AbstractPowerModel)
             _PMTP.constraint_exclusivity_switch(pm, i; nw = n) # the sum of the switches in a couple must be lower or equal than one (if OTS is allowed, like here), as each grid element is connected to either part of a split busbar no matter if the ZIL switch is opened or closed
             _PMTP.constraint_BS_OTS_branch(pm, i; nw = n) # making sure that if the grid element is not reconnected to the split busbar, the active and reactive power flowing through the switch is 0
             _PMTP.constraint_ZIL_switch(pm,i; nw = n)
-            #_PMTP.constraint_ZIL_no_OTS(pm,i; nw = n)
         end
 
         for i in _PM.ids(pm, n, :branch)

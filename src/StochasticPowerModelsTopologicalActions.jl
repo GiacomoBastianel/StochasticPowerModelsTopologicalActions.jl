@@ -7,8 +7,7 @@ import PowerModelsACDC; const _PMACDC = PowerModelsACDC
 import PowerModelsTopologicalActionsII; const _PMTP = PowerModelsTopologicalActionsII
 import FlexPlan; const _FP = FlexPlan
 import PowerModels; const _PM = PowerModels
-import InfrastructureModels
-const _IM = InfrastructureModels
+import InfrastructureModels; const _IM = InfrastructureModels
 
 import JuMP
 

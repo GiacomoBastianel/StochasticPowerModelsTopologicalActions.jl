@@ -45,7 +45,7 @@ original_grid = _PM.parse_file(test_case_file)
 
 results_folder = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Results"
 results_folder_figures = "/Users/giacomobastianel/Library/CloudStorage/OneDrive-KULeuven/IJEPES_paper/Figures"
-case = "case_24/stochastic_multistep"
+case = "case_30/stochastic_multistep"
 
 test_case = _PM.parse_file(test_case_file)
 test_case_opf = deepcopy(test_case)
@@ -110,10 +110,10 @@ scenario_wind = JSON.parsefile(joinpath(input_folder,"case30","Laplace_$(n_scena
 measured_wind = JSON.parsefile(joinpath(input_folder,"case30","measured_two_weeks_$(first_hour)_$(last_hour).json"))
 forecasted_wind = JSON.parsefile(joinpath(input_folder,"case30","forecasted_two_weeks_$(first_hour)_$(last_hour).json"))
 
-hourly_opf = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
-hourly_opf_measured = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_measured_$(first_hour)_$(last_hour).json"))
-hourly_opf_forecasted = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_forecasted_$(first_hour)_$(last_hour).json"))
-hourly_opf_average = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_average_$(first_hour)_$(last_hour).json"))
+#hourly_opf = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_stochastic_Laplace_$(n_scenarios)_scenarios_$(first_hour)_$(last_hour).json"))
+#hourly_opf_measured = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_measured_$(first_hour)_$(last_hour).json"))
+#hourly_opf_forecasted = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_forecasted_$(first_hour)_$(last_hour).json"))
+#hourly_opf_average = JSON.parsefile(joinpath(results_folder,case,"Hourly_opf_average_$(first_hour)_$(last_hour).json"))
 
 ################### Hourly optimization ########################
 bs_hourly_forecasted = JSON.parsefile(joinpath(results_folder,case,"hourly_bs_forecasted_$(first_hour)_$(last_hour)_all_days.json"))
@@ -185,7 +185,7 @@ end
 dict_try = Dict{String,Any}()
 time = []
 for day in 1:n_days
-    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"One_topology_stochastic_Laplace_8_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
+    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_one_topology_stochastic_Laplace_8_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
     push!(time,dict_try["$day"]["solve_time"])
 end
 [mean(time),maximum(time),minimum(time)]
@@ -197,7 +197,7 @@ bs_one_maximum_actions_measured = JSON.parsefile(joinpath(results_folder,case,"o
 dict_try = Dict{String,Any}()
 time = []
 for day in 1:n_days
-    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"One_maximum_actions_stochastic_Laplace_6_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
+    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_one_sw_stochastic_Laplace_6_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
     push!(time,dict_try["$day"]["solve_time"])
 end
 [mean(time),maximum(time),minimum(time)]
@@ -205,17 +205,17 @@ end
 dict_try = Dict{String,Any}()
 time = []
 for day in 1:n_days
-    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"One_maximum_actions_stochastic_Laplace_8_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
+    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_one_sw_stochastic_Laplace_8_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
     push!(time,dict_try["$day"]["solve_time"])
 end
 [mean(time),maximum(time),minimum(time)]
 
 
 ################### Two switching actions ########################
-bs_two_maximum_actions_forecasted = JSON.parsefile(joinpath(results_folder,case,"Two_maximum_actions_forecasted_$(first_hour)_$(last_hour)_all_days.json"))
+bs_two_maximum_actions_forecasted = JSON.parsefile(joinpath(results_folder,case,"Two_maximum_actions_stochastic_Laplace_6_scenarios_$(first_hour)_$(last_hour)_all_days.json"))
 feasibility_check_two_maximum_actions_forecasted  = JSON.parsefile(joinpath(results_folder,case,"fc_two_maximum_actions_forecasted_$(first_hour)_$(last_hour)_all_days.json")) 
 
-bs_two_maximum_actions_measured = JSON.parsefile(joinpath(results_folder,case,"two_maximum_actions_measured_$(first_hour)_$(last_hour)_all_days.json"))
+bs_two_maximum_actions_measured = JSON.parsefile(joinpath(results_folder,case,"Two_maximum_actions_stochastic_Laplace_8_scenarios_$(first_hour)_$(last_hour)_all_days.json"))
 feasibility_check_two_maximum_actions_measured  = JSON.parsefile(joinpath(results_folder,case,"fc_two_maximum_actions_measured_$(first_hour)_$(last_hour)_all_days.json")) 
 
 #bs_two_maximum_actions_average = JSON.parsefile(joinpath(results_folder,case,"two_maximum_actions_average_$(first_hour)_$(last_hour)_all_days.json"))
@@ -224,7 +224,7 @@ feasibility_check_two_maximum_actions_measured  = JSON.parsefile(joinpath(result
 dict_try = Dict{String,Any}()
 time = []
 for day in 1:n_days
-    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"Two_maximum_actions_stochastic_Laplace_6_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
+    dict_try["$day"] = deepcopy(JSON.parsefile(joinpath(results_folder,case,"24_hours_BS_two_sw_stochastic_Laplace_6_scenarios_$(first_hour)_$(last_hour)_day_$(day).json"))) 
     push!(time,dict_try["$day"]["solve_time"])
 end
 [mean(time),maximum(time),minimum(time)]
